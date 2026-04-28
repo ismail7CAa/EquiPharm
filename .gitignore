@@ -1,0 +1,12 @@
+# datasets
+dataset/
+*.npz
+*.pt
+
+# logs & checkpoints
+logs_*
+checkpoints_*
+
+# cache
+__pycache__/
+*.pyc
