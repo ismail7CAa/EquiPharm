@@ -6,7 +6,9 @@ dataset/
 # logs & checkpoints
 logs_*
 checkpoints_*
+runs/
 
 # cache
 __pycache__/
+.ipynb_checkpoints/
 *.pyc

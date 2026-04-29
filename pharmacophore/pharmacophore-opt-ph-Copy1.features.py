@@ -34,7 +34,7 @@ from rdkit.Chem import AllChem
 import os 
 import sys
 sys.path.append('/project/IZZY/molecular-representation/benchmarking/Methods/') 
-from equiformer_Copy1 import EquiformerQM9
+from equiformer_encoder_pharmaco_feat import EquiformerQM9
 from rdkit import RDConfig
 from rdkit.Chem import ChemicalFeatures
 
