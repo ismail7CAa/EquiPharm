@@ -18,7 +18,6 @@ import os
 import torch
 import torch.nn as nn
 import numpy as np
-
 from equiformer_pytorch import Equiformer
 from torch_geometric.utils import to_dense_batch, to_dense_adj
 
