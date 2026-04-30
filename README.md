@@ -41,7 +41,7 @@ flowchart TB
     
   end
 
-  B6 --> P7
+  B6 --> P6
 ```
 
 ## Overview
