@@ -10,7 +10,7 @@ flowchart TB
     B3["2D GNN baselines<br/>GCN, GAT, GraphSAGE, GIN"]
     B4["3D and equivariant models<br/>SphereNet, SE(3)-Transformer, Equiformer"]
     B5["Training and evaluation<br/>MAE, validation metrics, checkpoints, logs"]
-    B6["Model selection<br/>best representation family"]
+    B6["Model selection<br/>best molecular representation '3D-Encoder'"]
 
     B1 --> B2
     B2 --> B3
@@ -21,35 +21,27 @@ flowchart TB
   end
 
   subgraph P["Pipeline 2: Pharmacophore Virtual Screening"]
-    P1["DUD-E target data<br/>crystal ligand, actives, decoys"]
-    P2["Molecule preparation<br/>MOL2/SDF loading, RDKit sanitization"]
-    P3["Torsion optimization<br/>conformer angle updates"]
-    P4["RDKit to PyG conversion<br/>graph tensors and 3D coordinates"]
-    P5["EquiPharm branch<br/>attach pharmacophore feature vectors"]
-    P6["Equiformer baseline branch<br/>no explicit pharmacophore features"]
-    P7["Equiformer-based encoder<br/>latent molecular embeddings"]
-    P8["Similarity scoring<br/>query-candidate cosine similarity"]
-    P9["Screening outputs<br/>ranked hits, scores, metrics, ROC plots"]
+    P1["DUD-E target data<br/>query molecula (crystal ligand)"]
+    P2["DUD-E target data<br/>candidate molecule (actives, decoys)"]
+    P3["Molecule preparation<br/>MOL2/SDF loading, RDKit sanitization"]
+    P4["Torsion optimization<br/>conformer angle updates (Black Box Optimizer)"]
+    P5["RDKit to PyG conversion<br/>graph tensors and 3D coordinates"]
+    P6["EquiPharm branch<br/>attach pharmacophore feature vectors"]
+    P7["Similarity scoring<br/>query-candidate cosine similarity"]
 
-    P1 --> P2
+    P1 --> P3
     P2 --> P3
     P3 --> P4
+    P3 --> P5
     P4 --> P5
-    P4 --> P6
-    P5 --> P7
+    P5 --> P6
+    P5 --> P6
     P6 --> P7
-    P7 --> P8
-    P8 --> P3
-    P8 --> P9
+    P6 --> P5
+    
   end
 
   B6 --> P7
-
-  C1["Shared software layer<br/>molecule_io, torsion, screening, metrics"]
-  C1 -.-> P2
-  C1 -.-> P3
-  C1 -.-> P8
-  C1 -.-> P9
 ```
 
 ## Overview
