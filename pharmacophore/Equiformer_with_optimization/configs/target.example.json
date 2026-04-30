@@ -1,0 +1,16 @@
+{
+  "checkpoint_path": "checkpoints/equiformer/best_model.pt",
+  "query_ligand": "data/DUD-E/<target>/crystal_ligand.mol2",
+  "actives_dir": "data/DUD-E/<target>/actives_sdf",
+  "decoys_dir": "data/DUD-E/<target>/decoys_sdf",
+  "output_dir": "pharmacophore/results/Equiformer_with_optimization/<target>",
+  "target_name": "<target>",
+  "device": "cuda",
+  "optimize": true,
+  "maxiter": 3,
+  "popsize": 2,
+  "rotatable_only": false,
+  "heavy_only": true,
+  "exclude_rings": true,
+  "one_per_bond": false
+}

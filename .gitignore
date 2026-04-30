@@ -1,9 +1,11 @@
 # datasets
+data/
 dataset/
 *.npz
 *.pt
 
 # logs & checkpoints
+checkpoints/
 logs_*
 checkpoints_*
 runs/
