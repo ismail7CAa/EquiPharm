@@ -1,5 +1,9 @@
 # Benchmarking Methods
 
+<p align="center">
+  <img src="../../figures/benchmarking_pipeline_overview.png" alt="Benchmarking pipeline overview" width="850"/>
+</p>
+
 This directory contains the GPU-oriented QM9 benchmark models and shared training utilities.
 
 ## Shared pipeline

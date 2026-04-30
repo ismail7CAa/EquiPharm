@@ -1,5 +1,9 @@
 # Pharmacophore Screening
 
+<p align="center">
+  <img src="../figures/pharmacophore_screening_pipeline_overview.png" alt="Pharmacophore screening pipeline overview" width="850"/>
+</p>
+
 This directory contains two reproducible screening pipelines plus the original exploratory notebooks/scripts.
 DUD-E data and model checkpoints are not committed to the repository; paths are supplied through config files or CLI arguments.
 

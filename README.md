@@ -95,8 +95,7 @@ pharmacophore/
   notebooks/                       # Research notebooks from the exploratory stage
   results/                         # Reference screening outputs and plots
 
-figures/                           # Project figures and result visualizations
-pic/                               # README and project overview images
+figures/                           # Project diagrams, README images, and result visualizations
 ```
 
 ## Datasets
