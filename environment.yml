@@ -1,0 +1,31 @@
+name: equipharm
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - cpuonly
+  - pytorch=2.0.*
+  - rdkit
+  - numpy<2
+  - pandas
+  - scipy
+  - scikit-learn
+  - matplotlib
+  - tqdm
+  - ase
+  - tensorboard
+  - jupyterlab
+  - ipykernel
+  - pip:
+      - --find-links=https://data.pyg.org/whl/torch-2.0.0+cpu.html
+      - torch-geometric==2.5.1
+      - torch-scatter
+      - torch-sparse
+      - torch-cluster
+      - torch-spline-conv
+      - equiformer-pytorch
+      - se3-transformer-pytorch
+      - dive-into-graphs

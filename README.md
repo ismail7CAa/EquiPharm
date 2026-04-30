@@ -125,6 +125,42 @@ conda activate <environment-name>
 
 The benchmark models are GPU-oriented and expect a CUDA-enabled PyTorch setup for full training runs.
 
+## Docker
+
+Build the CPU-oriented project image:
+
+```bash
+docker build -t equipharm:latest .
+```
+
+Run a shell inside the container:
+
+```bash
+docker run --rm -it -v "$PWD:/workspace" equipharm:latest
+```
+
+Or use Docker Compose:
+
+```bash
+docker compose run --rm equipharm
+```
+
+Start the individual named container:
+
+```bash
+docker compose up -d equipharm
+docker exec -it equipharm bash
+docker compose down
+```
+
+Run the smoke tests in Docker:
+
+```bash
+docker run --rm equipharm:latest python -m unittest pharmacophore.tests.test_cli_smoke
+```
+
+Large local assets such as `data/`, `checkpoints/`, and `runs/` are excluded from image builds. Mount them into `/workspace` when running screening or training jobs.
+
 ## Running the Benchmarking Pipeline
 
 Benchmarking entry points are located in `benchmarking/Methods/`. Example commands:

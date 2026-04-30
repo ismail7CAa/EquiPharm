@@ -1,0 +1,15 @@
+services:
+  equipharm:
+    build:
+      context: .
+    image: equipharm:latest
+    container_name: equipharm
+    working_dir: /workspace
+    environment:
+      PYTHONPATH: /workspace
+      MPLBACKEND: Agg
+    volumes:
+      - .:/workspace
+    stdin_open: true
+    tty: true
+    command: bash
