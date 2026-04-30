@@ -37,7 +37,7 @@ flowchart TB
     P5 --> P6
     P5 --> P6
     P6 --> P7
-    P6 --> P5
+    P6 --> P4
     
   end
 
