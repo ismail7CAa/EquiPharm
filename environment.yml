@@ -6,8 +6,8 @@ channels:
 dependencies:
   - python=3.10
   - pip
-  - cpuonly
   - pytorch=2.0.*
+  - pytorch-cuda=11.8 
   - rdkit
   - numpy<2
   - pandas
@@ -20,7 +20,7 @@ dependencies:
   - jupyterlab
   - ipykernel
   - pip:
-      - --find-links=https://data.pyg.org/whl/torch-2.0.0+cpu.html
+      - --find-links=https://data.pyg.org/whl/torch-2.0.0+cu118.html  # for CUDA 11.8
       - torch-geometric==2.5.1
       - torch-scatter
       - torch-sparse
