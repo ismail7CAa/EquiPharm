@@ -1,16 +1,66 @@
-# datasets
+# =========================
+# DATASETS
+# =========================
 data/
 dataset/
 *.npz
+*.csv
+*.pkl
+*.h5
+
+# =========================
+# MODEL CHECKPOINTS
+# =========================
+*.pt
+*.pth
+*.ckpt
+checkpoints/
+checkpoints_*
+checkpoint_02-05-26/
 *.pt
 
-# logs & checkpoints
-checkpoints/
-logs_*
-checkpoints_*
+# =========================
+# LOGS & TRAINING OUTPUT
+# =========================
+logs/
+logs_*/
 runs/
+events.out.*
 
-# cache
-__pycache__/
+# =========================
+# JUPYTER
+# =========================
 .ipynb_checkpoints/
+
+# =========================
+# PYTHON CACHE
+# =========================
+__pycache__/
 *.pyc
+*.pyo
+
+# =========================
+# ENV & SYSTEM
+# =========================
+.env
+.venv/
+env/
+venv/
+
+# =========================
+# IDE
+# =========================
+.vscode/
+.idea/
+
+# =========================
+# OS FILES
+# =========================
+.DS_Store
+Thumbs.db
+
+
+checkpoint_02-05-26/
+*.pt
+checkpoint_02-05-26/
+*.pt
