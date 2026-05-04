@@ -96,6 +96,8 @@ pharmacophore/
   results/                         # Reference screening outputs and plots
 
 figures/                           # Project diagrams, README images, and result visualizations
+models_checkpt/                    # Helper script for downloading the trained model checkpoint
+scripts/                           # Dataset and checkpoint preparation helpers
 ```
 
 ## Datasets
@@ -103,15 +105,66 @@ figures/                           # Project diagrams, README images, and result
 - `QM9`: used for benchmarking molecular representation models.
 - `DUD-E`: used for pharmacophore screening, active/decoy ranking, and evaluation.
 
-DUD-E data and trained checkpoints are expected to be stored locally and are not committed to the repository.
+Datasets and trained checkpoints are expected to be stored locally and are not committed to the repository.
 
-Expected DUD-E target layout:
+Download and prepare both datasets in the paths used by the code:
+
+```bash
+bash scripts/download_datasets.sh
+```
+
+This downloads DUD-E from the official DUD-E all-target archive:
+
+```text
+http://dude.docking.org/db/subsets/all/all.tar.gz
+```
+
+and prepares it as:
 
 ```text
 data/DUD-E/<target>/
   crystal_ligand.mol2
   actives_sdf/
   decoys_sdf/
+```
+
+The script also downloads QM9 through `torch_geometric.datasets.QM9` into:
+
+```text
+data/QM9/
+```
+
+To download only one dataset:
+
+```bash
+bash scripts/download_datasets.sh dude
+bash scripts/download_datasets.sh qm9
+```
+
+After this setup, the default benchmark path `data/QM9` and screening path `data/DUD-E/<target>` are ready to use without moving files.
+
+## Model Checkpoint
+
+The trained checkpoint used for the maintained EquiPharm model is stored outside the repository. Download it with:
+
+```bash
+bash models_checkpt/download_checkpoint.sh
+```
+
+The script creates:
+
+```text
+models_checkpt/checkpoint_02-05-26/best_model.pt
+```
+
+Use this path when running the screening pipeline:
+
+```bash
+python -m pharmacophore.EquiPharm.cli \
+  --target-dir data/DUD-E/<target> \
+  --target-name <target> \
+  --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
+  --output-dir pharmacophore/results/EquiPharm/<target>
 ```
 
 ## Installation
@@ -198,7 +251,7 @@ Run the pharmacophore-aware EquiPharm workflow:
 python -m pharmacophore.EquiPharm.cli \
   --target-dir data/DUD-E/<target> \
   --target-name <target> \
-  --checkpoint checkpoints/equipharm/best_model.pt \
+  --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
   --output-dir pharmacophore/results/EquiPharm/<target>
 ```
 

@@ -24,6 +24,12 @@ data/DUD-E/<target>/
   decoys_sdf/
 ```
 
+From the repository root, download and prepare DUD-E into this layout with:
+
+```bash
+bash scripts/download_datasets.sh dude
+```
+
 ## Run Any Target
 
 Using a target directory:
@@ -32,7 +38,7 @@ Using a target directory:
 python -m pharmacophore.EquiPharm.cli \
   --target-dir data/DUD-E/aces \
   --target-name aces \
-  --checkpoint checkpoints/equipharm/best_model.pt \
+  --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
   --output-dir pharmacophore/results/EquiPharm/aces
 ```
 
@@ -49,7 +55,7 @@ For a smoke test:
 python -m pharmacophore.EquiPharm.cli \
   --target-dir data/DUD-E/aces \
   --target-name aces \
-  --checkpoint checkpoints/equipharm/best_model.pt \
+  --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
   --output-dir pharmacophore/results/EquiPharm/aces_smoke \
   --limit 100
 ```

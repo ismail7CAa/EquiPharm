@@ -26,7 +26,7 @@ Run:
 python -m pharmacophore.EquiPharm.cli \
   --target-dir data/DUD-E/<target> \
   --target-name <target> \
-  --checkpoint checkpoints/equipharm/best_model.pt \
+  --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
   --output-dir pharmacophore/results/EquiPharm/<target>
 ```
 
@@ -70,6 +70,12 @@ data/DUD-E/<target>/
   crystal_ligand.mol2
   actives_sdf/
   decoys_sdf/
+```
+
+From the repository root, download and prepare DUD-E into this layout with:
+
+```bash
+bash scripts/download_datasets.sh dude
 ```
 
 Examples:
@@ -123,7 +129,7 @@ Use `--limit` before launching full DUD-E screening:
 ```bash
 python -m pharmacophore.EquiPharm.cli \
   --target-dir data/DUD-E/aces \
-  --checkpoint checkpoints/equipharm/best_model.pt \
+  --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
   --output-dir pharmacophore/results/EquiPharm/aces_smoke \
   --limit 100
 ```

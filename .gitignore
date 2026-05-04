@@ -3,6 +3,7 @@
 # =========================
 data/
 dataset/
+.downloads/
 *.npz
 *.csv
 *.pkl
@@ -17,7 +18,7 @@ dataset/
 checkpoints/
 checkpoints_*
 checkpoint_02-05-26/
-*.pt
+models_checkpt/checkpoint_02-05-26/
 
 # =========================
 # LOGS & TRAINING OUTPUT
@@ -58,9 +59,3 @@ venv/
 # =========================
 .DS_Store
 Thumbs.db
-
-
-checkpoint_02-05-26/
-*.pt
-checkpoint_02-05-26/
-*.pt
