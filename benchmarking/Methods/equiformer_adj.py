@@ -18,20 +18,37 @@ def build_equiformer_adj(
     hidden_dim: int = 128,
     dropout: float = 0.3,
     out_dim: int = 19,
+    drop_path: float = 0.0,
 ) -> nn.Module:
     """Build the adjacency-aware Equiformer architecture."""
     del dropout
-    return EquiformerQM9(n_token=in_dim, n_out=out_dim, hidden_dim=hidden_dim)
+    return EquiformerQM9(
+        n_token=in_dim,
+        n_out=out_dim,
+        hidden_dim=hidden_dim,
+        drop_path=drop_path,
+    )
 
 
 def main() -> None:
     config = parse_benchmark_args(
         model_name="EquiformerAdj",
-        default_epochs=1500,
-        default_batch_size=12,
-        default_eval_batch_size=32,
+        default_epochs=300,
+        default_batch_size=128,
+        default_eval_batch_size=128,
         default_hidden_dim=128,
-        default_lr=3e-6,
+        default_lr=5e-4,
+        default_weight_decay=0.01,
+        default_optimizer="adamw",
+        default_opt_eps=1e-8,
+        default_scheduler="cosine",
+        default_loss="l1",
+        default_model_ema=True,
+        default_model_ema_decay=0.9999,
+        default_drop_path=0.1,
+        default_warmup_lr=1e-6,
+        default_warmup_epochs=5,
+        default_min_lr=1e-5,
     )
     train_baseline(config, build_equiformer_adj)
 

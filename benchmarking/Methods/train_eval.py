@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 
 # Train epoch
-def train_epoch(model, loader, optimizer, device, accum_steps=4):
+def train_epoch(model, loader, optimizer, device, accum_steps=4, loss_fn="mse", model_ema=None):
     """
     Perform one epoch of training.
 
@@ -33,10 +33,17 @@ def train_epoch(model, loader, optimizer, device, accum_steps=4):
         optimizer.zero_grad()
         pred = model(batch)
         target = batch.y
-        loss = F.mse_loss(pred, target)
+        if loss_fn == "mse":
+            loss = F.mse_loss(pred, target)
+        elif loss_fn == "l1":
+            loss = F.l1_loss(pred, target)
+        else:
+            raise ValueError(f"Unsupported loss function: {loss_fn}")
 
         loss.backward()
         optimizer.step()
+        if model_ema is not None:
+            model_ema.update(model)
         total_loss += loss.item()
 
     return total_loss / len(loader)
@@ -82,7 +89,5 @@ def evaluate(model, loader, device, norm_means, norm_stds):
 
 
 # In[ ]:
-
-
 
 

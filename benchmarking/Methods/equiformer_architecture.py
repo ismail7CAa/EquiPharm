@@ -2,9 +2,29 @@
 
 from __future__ import annotations
 
+import torch
 import torch.nn as nn
 from equiformer_pytorch import Equiformer
 from torch_geometric.utils import to_dense_adj, to_dense_batch
+
+
+class DropPath(nn.Module):
+    """Stochastic depth applied per molecule."""
+
+    def __init__(self, drop_prob: float = 0.0) -> None:
+        super().__init__()
+        if not 0.0 <= drop_prob < 1.0:
+            raise ValueError(f"drop_path must be in [0, 1), got {drop_prob}")
+        self.drop_prob = drop_prob
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.drop_prob == 0.0 or not self.training:
+            return x
+
+        keep_prob = 1.0 - self.drop_prob
+        mask_shape = (x.shape[0],) + (1,) * (x.ndim - 1)
+        mask = x.new_empty(mask_shape).bernoulli_(keep_prob)
+        return x * mask.div(keep_prob)
 
 
 class EquiformerQM9(nn.Module):
@@ -15,6 +35,7 @@ class EquiformerQM9(nn.Module):
         n_token: int = 11,
         n_out: int = 19,
         hidden_dim: int = 128,
+        drop_path: float = 0.0,
     ) -> None:
         super().__init__()
         self.embedding = nn.Linear(n_token, hidden_dim)
@@ -35,6 +56,7 @@ class EquiformerQM9(nn.Module):
             attend_self=True,
             l2_dist_attention=False,
         )
+        self.drop_path = DropPath(drop_path)
         self.linear = nn.Linear(hidden_dim, n_out)
 
     def forward(self, data):
@@ -48,6 +70,7 @@ class EquiformerQM9(nn.Module):
 
         out = self.model(x, coords, mask=mask, adj_mat=adj_mat)
         x = self._extract_type0(out)
+        x = self.drop_path(x)
 
         mask_f = mask[:, : x.size(1)].float()
         x = (x * mask_f.unsqueeze(-1)).sum(dim=1)

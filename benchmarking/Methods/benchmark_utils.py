@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import csv
+import inspect
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -12,8 +15,8 @@ from typing import Callable
 import torch
 import torch.nn as nn
 from ase.units import Ang, Bohr, Hartree, eV
-from torch.optim import Adam
-from torch.optim.lr_scheduler import StepLR
+from torch.optim import Adam, AdamW
+from torch.optim.lr_scheduler import LambdaLR, StepLR
 from torch.utils.tensorboard import SummaryWriter
 from torch_geometric.datasets import QM9
 from torch_geometric.loader import DataLoader
@@ -61,6 +64,16 @@ class BenchmarkConfig:
     lr_decay_step: int
     lr_decay_factor: float
     weight_decay: float
+    optimizer: str
+    opt_eps: float
+    scheduler: str
+    loss: str
+    model_ema: bool
+    model_ema_decay: float
+    drop_path: float
+    warmup_lr: float
+    warmup_epochs: int
+    min_lr: float
     seed: int
     train_size: int
     valid_size: int
@@ -160,9 +173,92 @@ def safe_metric_name(name: str) -> str:
     )
 
 
+class ModelEma:
+    """Track an exponential moving average copy of model weights."""
+
+    def __init__(self, model: nn.Module, decay: float) -> None:
+        self.module = copy.deepcopy(model).eval()
+        self.decay = decay
+        for param in self.module.parameters():
+            param.requires_grad_(False)
+
+    @torch.no_grad()
+    def update(self, model: nn.Module) -> None:
+        ema_state = self.module.state_dict()
+        model_state = model.state_dict()
+        for key, ema_value in ema_state.items():
+            model_value = model_state[key].detach()
+            if ema_value.dtype.is_floating_point:
+                ema_value.mul_(self.decay).add_(model_value, alpha=1.0 - self.decay)
+            else:
+                ema_value.copy_(model_value)
+
+
+def build_optimizer(config: BenchmarkConfig, model: nn.Module):
+    if config.optimizer == "adam":
+        return Adam(
+            model.parameters(),
+            lr=config.lr,
+            eps=config.opt_eps,
+            weight_decay=config.weight_decay,
+        )
+    if config.optimizer == "adamw":
+        return AdamW(
+            model.parameters(),
+            lr=config.lr,
+            eps=config.opt_eps,
+            weight_decay=config.weight_decay,
+        )
+    raise ValueError(f"Unsupported optimizer: {config.optimizer}")
+
+
+def build_scheduler(config: BenchmarkConfig, optimizer):
+    if config.scheduler == "step":
+        return StepLR(
+            optimizer,
+            step_size=config.lr_decay_step,
+            gamma=config.lr_decay_factor,
+        )
+
+    if config.scheduler in {"cosine", "warmup_cosine"}:
+        warmup_epochs = max(0, config.warmup_epochs)
+        decay_epochs = max(1, config.epochs - warmup_epochs)
+        min_lr_ratio = config.min_lr / config.lr if config.lr > 0 else 0.0
+        warmup_lr_ratio = config.warmup_lr / config.lr if config.lr > 0 else 0.0
+
+        def lr_lambda(epoch: int) -> float:
+            if warmup_epochs > 0 and epoch < warmup_epochs:
+                if warmup_epochs == 1:
+                    return 1.0
+                progress = float(epoch) / float(warmup_epochs - 1)
+                return warmup_lr_ratio + (1.0 - warmup_lr_ratio) * progress
+
+            progress = min(1.0, max(0.0, float(epoch - warmup_epochs) / float(decay_epochs)))
+            cosine_decay = 0.5 * (1.0 + math.cos(progress * math.pi))
+            return min_lr_ratio + (1.0 - min_lr_ratio) * cosine_decay
+
+        return LambdaLR(optimizer, lr_lambda=lr_lambda)
+
+    raise ValueError(f"Unsupported scheduler: {config.scheduler}")
+
+
+def build_model(
+    model_factory: Callable[..., nn.Module],
+    in_dim: int,
+    hidden_dim: int,
+    dropout: float,
+    out_dim: int,
+    drop_path: float,
+) -> nn.Module:
+    factory_signature = inspect.signature(model_factory)
+    if "drop_path" in factory_signature.parameters:
+        return model_factory(in_dim, hidden_dim, dropout, out_dim, drop_path=drop_path)
+    return model_factory(in_dim, hidden_dim, dropout, out_dim)
+
+
 def train_baseline(
     config: BenchmarkConfig,
-    model_factory: Callable[[int, int, float, int], nn.Module],
+    model_factory: Callable[..., nn.Module],
 ) -> None:
     torch.manual_seed(config.seed)
     if config.device == "cuda" and not torch.cuda.is_available():
@@ -191,19 +287,18 @@ def train_baseline(
     val_loader = DataLoader(valid_dataset, batch_size=config.eval_batch_size, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=config.eval_batch_size, shuffle=False)
 
-    model = model_factory(
+    model = build_model(
+        model_factory,
         dataset.num_node_features,
         config.hidden_dim,
         config.dropout,
         len(PROPERTY_NAMES),
+        config.drop_path,
     ).to(device)
 
-    optimizer = Adam(model.parameters(), lr=config.lr, weight_decay=config.weight_decay)
-    scheduler = StepLR(
-        optimizer,
-        step_size=config.lr_decay_step,
-        gamma=config.lr_decay_factor,
-    )
+    optimizer = build_optimizer(config, model)
+    scheduler = build_scheduler(config, optimizer)
+    model_ema = ModelEma(model, config.model_ema_decay) if config.model_ema else None
 
     best_mean_val = float("inf")
     best_val = [float("inf")] * len(PROPERTY_NAMES)
@@ -211,16 +306,32 @@ def train_baseline(
 
     print(f"#params: {sum(p.numel() for p in model.parameters()):,}")
     print(f"Training {config.model_name} for all 19 QM9 targets")
+    print(
+        "Optimization: "
+        f"{config.optimizer}, opt_eps={config.opt_eps}, scheduler={config.scheduler}, lr={config.lr}, "
+        f"weight_decay={config.weight_decay}, loss={config.loss}, "
+        f"warmup_lr={config.warmup_lr}, warmup_epochs={config.warmup_epochs}, "
+        f"min_lr={config.min_lr}, model_ema={config.model_ema}, "
+        f"model_ema_decay={config.model_ema_decay}, drop_path={config.drop_path}"
+    )
 
     with SummaryWriter(log_dir=str(log_dir)) as writer:
         for epoch in range(1, config.epochs + 1):
             print(f"\n=== Epoch {epoch} ===")
-            train_loss = train_epoch(model, train_loader, optimizer, device)
-            val_mae = evaluate(model, val_loader, device, norm_stats["mean"], norm_stats["std"])
-            test_mae = evaluate(model, test_loader, device, norm_stats["mean"], norm_stats["std"])
+            train_loss = train_epoch(
+                model,
+                train_loader,
+                optimizer,
+                device,
+                loss_fn=config.loss,
+                model_ema=model_ema,
+            )
+            eval_model = model_ema.module if model_ema is not None else model
+            val_mae = evaluate(eval_model, val_loader, device, norm_stats["mean"], norm_stats["std"])
+            test_mae = evaluate(eval_model, test_loader, device, norm_stats["mean"], norm_stats["std"])
 
-            writer.add_scalar("train/loss_mse", train_loss, epoch)
-            print(f"Train loss (MSE): {train_loss:.6f}")
+            writer.add_scalar(f"train/loss_{config.loss}", train_loss, epoch)
+            print(f"Train loss ({config.loss.upper()}): {train_loss:.6f}")
 
             for target_idx, prop in enumerate(PROPERTY_NAMES):
                 metric_name = safe_metric_name(prop)
@@ -241,6 +352,9 @@ def train_baseline(
                     {
                         "epoch": epoch,
                         "model_state_dict": model.state_dict(),
+                        "model_ema_state_dict": (
+                            model_ema.module.state_dict() if model_ema is not None else None
+                        ),
                         "optimizer_state_dict": optimizer.state_dict(),
                         "best_val": best_val,
                         "best_test": best_test,
@@ -271,6 +385,16 @@ def parse_benchmark_args(
     default_lr_decay_step: int = 50,
     default_lr_decay_factor: float = 0.5,
     default_weight_decay: float = 1e-4,
+    default_optimizer: str = "adam",
+    default_opt_eps: float = 1e-8,
+    default_scheduler: str = "step",
+    default_loss: str = "mse",
+    default_model_ema: bool = False,
+    default_model_ema_decay: float = 0.9999,
+    default_drop_path: float = 0.0,
+    default_warmup_lr: float = 0.0,
+    default_warmup_epochs: int = 0,
+    default_min_lr: float = 0.0,
 ) -> BenchmarkConfig:
     parser = argparse.ArgumentParser(description=f"Train a {model_name} baseline on QM9.")
     parser.add_argument("--data-dir", type=Path, default=Path("data/QM9"))
@@ -284,6 +408,22 @@ def parse_benchmark_args(
     parser.add_argument("--lr-decay-step", type=int, default=default_lr_decay_step)
     parser.add_argument("--lr-decay-factor", type=float, default=default_lr_decay_factor)
     parser.add_argument("--weight-decay", type=float, default=default_weight_decay)
+    parser.add_argument("--optimizer", "--opt", choices=["adam", "adamw"], default=default_optimizer)
+    parser.add_argument("--opt-eps", type=float, default=default_opt_eps)
+    parser.add_argument(
+        "--scheduler",
+        "--sched",
+        choices=["step", "cosine", "warmup_cosine"],
+        default=default_scheduler,
+    )
+    parser.add_argument("--loss", choices=["mse", "l1"], default=default_loss)
+    parser.add_argument("--model-ema", action="store_true", default=default_model_ema)
+    parser.add_argument("--no-model-ema", action="store_false", dest="model_ema")
+    parser.add_argument("--model-ema-decay", type=float, default=default_model_ema_decay)
+    parser.add_argument("--drop-path", type=float, default=default_drop_path)
+    parser.add_argument("--warmup-lr", type=float, default=default_warmup_lr)
+    parser.add_argument("--warmup-epochs", type=int, default=default_warmup_epochs)
+    parser.add_argument("--min-lr", type=float, default=default_min_lr)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--train-size", type=int, default=110_000)
     parser.add_argument("--valid-size", type=int, default=10_000)
