@@ -1,0 +1,9 @@
+{
+  "command_template": "python path/to/pharmacomatch_screen.py --query {query_ligand} --candidate {candidate} --json",
+  "score_json_key": "score",
+  "query_ligand": "data/DUD-E/<target>/crystal_ligand.mol2",
+  "actives_dir": "data/DUD-E/<target>/actives_sdf",
+  "decoys_dir": "data/DUD-E/<target>/decoys_sdf",
+  "output_dir": "pharmacophore/results/PharmacoMatch/<target>",
+  "target_name": "<target>"
+}

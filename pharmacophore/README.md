@@ -37,6 +37,26 @@ python -m pharmacophore.EquiPharm.cli \
   --config pharmacophore/EquiPharm/configs/target.example.json
 ```
 
+### Optional External Baselines
+
+Two external baselines are scaffolded but kept isolated from the main EquiPharm code path:
+
+- `pharmacophore/CDPKit/` wraps CDPKit `psdcreate`/`psdscreen` for pharmacophore database screening.
+- `pharmacophore/PharmacoMatch/` wraps a configurable PharmacoMatch command and parses a score from JSON or text output.
+
+These adapters are ready to configure, but they do not run unless their CLIs are called explicitly:
+
+```bash
+python -m pharmacophore.CDPKit.cli \
+  --config pharmacophore/CDPKit/configs/target.example.json
+
+python -m pharmacophore.PharmacoMatch.cli \
+  --config pharmacophore/PharmacoMatch/configs/target.example.json
+```
+
+Both adapters write the same result files as the maintained pipelines under `pharmacophore/results/<pipeline>/<target>/`.
+For full datasets, pass `--dataset-dir data/DUD-E` and the adapters also write `pharmacophore/results/<pipeline>/dataset_metrics.csv`.
+
 ### Equiformer With Optimization
 
 Folder: `pharmacophore/Equiformer_with_optimization/`
