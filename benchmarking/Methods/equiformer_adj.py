@@ -49,6 +49,9 @@ def main() -> None:
         default_warmup_lr=1e-6,
         default_warmup_epochs=5,
         default_min_lr=1e-5,
+        default_seed=0,
+        default_split_seed=1,
+        default_seeds=[1, 2, 3],
     )
     train_baseline(config, build_equiformer_adj)
 

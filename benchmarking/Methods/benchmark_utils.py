@@ -8,10 +8,11 @@ import csv
 import inspect
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable
 
+import numpy as np
 import torch
 import torch.nn as nn
 from ase.units import Ang, Bohr, Hartree, eV
@@ -75,6 +76,8 @@ class BenchmarkConfig:
     warmup_epochs: int
     min_lr: float
     seed: int
+    split_seed: int
+    seeds: list[int] | None
     train_size: int
     valid_size: int
     device: str
@@ -119,8 +122,10 @@ def load_qm9_splits(config: BenchmarkConfig):
             f"({num_mols})."
         )
 
-    generator = torch.Generator().manual_seed(config.seed)
-    perm = torch.randperm(num_mols, generator=generator)
+    perm = torch.as_tensor(
+        np.random.default_rng(config.split_seed).permutation(num_mols),
+        dtype=torch.long,
+    )
 
     train_idx = perm[: config.train_size]
     valid_idx = perm[config.train_size : config.train_size + config.valid_size]
@@ -152,6 +157,17 @@ def write_best_metrics(path: Path, best_val: list[float], best_test: list[float]
         writer = csv.writer(handle)
         writer.writerow(["target", "val_MAE", "test_MAE"])
         writer.writerows(zip(PROPERTY_NAMES, best_val, best_test))
+
+
+def write_seed_summary(path: Path, seed_results: list[dict[str, float | int | str]]) -> None:
+    if not seed_results:
+        return
+
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        fieldnames = ["seed", "split_seed", "output_dir", "mean_val_MAE", "mean_test_MAE"]
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(seed_results)
 
 
 def write_run_config(path: Path, config: BenchmarkConfig) -> None:
@@ -256,11 +272,12 @@ def build_model(
     return model_factory(in_dim, hidden_dim, dropout, out_dim)
 
 
-def train_baseline(
+def train_single_baseline(
     config: BenchmarkConfig,
     model_factory: Callable[..., nn.Module],
-) -> None:
+) -> dict[str, float | int | str]:
     torch.manual_seed(config.seed)
+    np.random.seed(config.seed)
     if config.device == "cuda" and not torch.cuda.is_available():
         raise RuntimeError(
             "CUDA was requested, but no CUDA device is available. "
@@ -282,6 +299,11 @@ def train_baseline(
     print(f"Using device: {device}")
     print(f"Total QM9 molecules: {len(dataset)}")
     print(f"Node feature dim: {dataset.num_node_features}")
+    print(
+        "QM9 split: "
+        f"train={len(train_dataset)}, valid={len(valid_dataset)}, test={len(test_dataset)}, "
+        f"split_seed={config.split_seed}, train_seed={config.seed}"
+    )
 
     train_loader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
     val_loader = DataLoader(valid_dataset, batch_size=config.eval_batch_size, shuffle=False)
@@ -373,6 +395,39 @@ def train_baseline(
     for prop, val, test in zip(PROPERTY_NAMES, best_val, best_test):
         print(f"  {prop:15s} | Best validation MAE: {val:.6f} | Test MAE at best val: {test:.6f}")
 
+    return {
+        "seed": config.seed,
+        "split_seed": config.split_seed,
+        "output_dir": str(config.output_dir),
+        "mean_val_MAE": best_mean_val,
+        "mean_test_MAE": sum(best_test) / len(best_test),
+    }
+
+
+def train_baseline(
+    config: BenchmarkConfig,
+    model_factory: Callable[..., nn.Module],
+) -> None:
+    if not config.seeds:
+        train_single_baseline(config, model_factory)
+        return
+
+    base_output_dir = config.output_dir
+    base_output_dir.mkdir(parents=True, exist_ok=True)
+    seed_results = []
+    for seed in config.seeds:
+        seed_config = replace(
+            config,
+            seed=seed,
+            split_seed=seed,
+            output_dir=base_output_dir / f"seed_{seed}",
+            seeds=None,
+        )
+        print(f"\n######## Running seed {seed} / split_seed {seed} ########")
+        seed_results.append(train_single_baseline(seed_config, model_factory))
+
+    write_seed_summary(base_output_dir / "seed_summary.csv", seed_results)
+
 
 def parse_benchmark_args(
     model_name: str,
@@ -395,6 +450,9 @@ def parse_benchmark_args(
     default_warmup_lr: float = 0.0,
     default_warmup_epochs: int = 0,
     default_min_lr: float = 0.0,
+    default_seed: int = 42,
+    default_split_seed: int | None = None,
+    default_seeds: list[int] | None = None,
 ) -> BenchmarkConfig:
     parser = argparse.ArgumentParser(description=f"Train a {model_name} baseline on QM9.")
     parser.add_argument("--data-dir", type=Path, default=Path("data/QM9"))
@@ -424,10 +482,20 @@ def parse_benchmark_args(
     parser.add_argument("--warmup-lr", type=float, default=default_warmup_lr)
     parser.add_argument("--warmup-epochs", type=int, default=default_warmup_epochs)
     parser.add_argument("--min-lr", type=float, default=default_min_lr)
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--seed", type=int, default=default_seed)
+    parser.add_argument("--split-seed", type=int, default=default_split_seed)
+    parser.add_argument(
+        "--seeds",
+        nargs="+",
+        type=int,
+        default=default_seeds,
+        help="Run repeated train/split seeds into output-dir/seed_<seed> subdirectories.",
+    )
     parser.add_argument("--train-size", type=int, default=110_000)
     parser.add_argument("--valid-size", type=int, default=10_000)
     parser.add_argument("--device", default="cuda", choices=["auto", "cpu", "cuda"])
     args = parser.parse_args()
+    if args.split_seed is None:
+        args.split_seed = args.seed
 
     return BenchmarkConfig(model_name=model_name, **vars(args))

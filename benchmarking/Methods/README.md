@@ -56,7 +56,6 @@ python benchmarking/Methods/GIN.py --epochs 10 --device cuda
 python benchmarking/Methods/SAGE.py --epochs 10 --device cuda
 python benchmarking/Methods/spherenet.py --epochs 10 --device cuda
 python benchmarking/Methods/se3transformer.py --epochs 10 --device cuda
-python benchmarking/Methods/equiformer_adj.py --epochs 10 --device cuda
 python benchmarking/Methods/equiformer_pt_cloud.py --epochs 10 --device cuda
 ```
 
@@ -70,6 +69,18 @@ runs/<model>/
   logs/
 ```
 
+The adjacency-aware Equiformer entry point uses Equiformer-style QM9 defaults: AdamW, cosine warmup scheduling, EMA, 110k/10k train/validation split sizes, and repeated seeds. Run the full comparison with:
+
+```bash
+python benchmarking/Methods/equiformer_adj.py --device cuda
+```
+
+By default this runs seeds `1 2 3`, writes per-seed outputs under `runs/EquiformerAdj/seed_<seed>/`, and writes `runs/EquiformerAdj/seed_summary.csv`. To compare fewer seeds:
+
+```bash
+python benchmarking/Methods/equiformer_adj.py --seeds 1 2 --device cuda
+```
+
 ## Smoke Test
 
 For a quick GPU smoke test, reduce the split sizes:
@@ -77,6 +88,19 @@ For a quick GPU smoke test, reduce the split sizes:
 ```bash
 python benchmarking/Methods/GAT.py \
   --epochs 1 \
+  --train-size 256 \
+  --valid-size 64 \
+  --batch-size 32 \
+  --eval-batch-size 64 \
+  --device cuda
+```
+
+For an EquiformerAdj smoke test, also override the multi-seed default:
+
+```bash
+python benchmarking/Methods/equiformer_adj.py \
+  --epochs 1 \
+  --seeds 1 \
   --train-size 256 \
   --valid-size 64 \
   --batch-size 32 \

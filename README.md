@@ -225,17 +225,41 @@ python benchmarking/Methods/GIN.py --epochs 10 --device cuda
 python benchmarking/Methods/SAGE.py --epochs 10 --device cuda
 python benchmarking/Methods/spherenet.py --epochs 10 --device cuda
 python benchmarking/Methods/se3transformer.py --epochs 10 --device cuda
-python benchmarking/Methods/equiformer_adj.py --epochs 10 --device cuda
 python benchmarking/Methods/equiformer_pt_cloud.py --epochs 10 --device cuda
 ```
 
 Each benchmark run writes reproducible artifacts under `runs/<model>/`, including the configuration, best validation/test metrics, checkpoints, and logs.
+
+The adjacency-aware Equiformer entry point is configured with Equiformer-style QM9 defaults: AdamW, cosine warmup scheduling, EMA, train/validation sizes of 110k/10k, and three repeated split/training seeds. A full comparison run is:
+
+```bash
+python benchmarking/Methods/equiformer_adj.py --device cuda
+```
+
+This writes per-seed runs under `runs/EquiformerAdj/seed_<seed>/` and a cross-seed summary at `runs/EquiformerAdj/seed_summary.csv`. To run a smaller seed set, pass:
+
+```bash
+python benchmarking/Methods/equiformer_adj.py --seeds 1 2 --device cuda
+```
 
 For a quick smoke test:
 
 ```bash
 python benchmarking/Methods/GAT.py \
   --epochs 1 \
+  --train-size 256 \
+  --valid-size 64 \
+  --batch-size 32 \
+  --eval-batch-size 64 \
+  --device cuda
+```
+
+For a quick EquiformerAdj smoke test, override the multi-seed defaults:
+
+```bash
+python benchmarking/Methods/equiformer_adj.py \
+  --epochs 1 \
+  --seeds 1 \
   --train-size 256 \
   --valid-size 64 \
   --batch-size 32 \
