@@ -308,11 +308,13 @@ pharmacophore/results/<pipeline>/<target>/
   scores.csv
   ranked_hits.csv
   metrics.json
+  screening_performance_summary.csv
+  auroc_curve_coordinates.csv
   cosine_similarity_boxplot.png
   roc_curve_actives_vs_decoys.png
 ```
 
-These outputs support comparison between active and decoy molecules through ranking metrics, score distributions, and ROC analysis.
+These outputs support comparison between active and decoy molecules through ranking metrics, EF1%, BEDROC(alpha=20), score distributions, and ROC analysis.
 
 ## Tests
 

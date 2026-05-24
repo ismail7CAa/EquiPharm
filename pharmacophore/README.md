@@ -126,11 +126,14 @@ pharmacophore/results/<pipeline>/<target>/
   scores.csv
   ranked_hits.csv
   metrics.json
+  screening_performance_summary.csv
+  auroc_curve_coordinates.csv
   cosine_similarity_boxplot.png
   roc_curve_actives_vs_decoys.png
 ```
 
-`metrics.json` and `scores.csv` include the pipeline name and protein target name.
+`metrics.json` and `screening_performance_summary.csv` include AUROC, PR-AUC, EF1%, and BEDROC(alpha=20), plus the pipeline name and protein target name.
+`auroc_curve_coordinates.csv` stores the false-positive-rate, true-positive-rate, and threshold values used to draw the ROC curve.
 If `--target-name` is omitted, the target is inferred from paths like `data/DUD-E/<target>/...`.
 
 Existing reference plots and CSV exports from the exploratory workflow are kept in:
