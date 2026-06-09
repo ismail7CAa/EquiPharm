@@ -81,6 +81,8 @@ class BenchmarkConfig:
     train_size: int
     valid_size: int
     device: str
+    resume_from: Path | None
+    auto_resume: bool
 
 
 def get_qm9_conversions_tensor(device: torch.device | str) -> torch.Tensor:
@@ -180,6 +182,13 @@ def write_run_config(path: Path, config: BenchmarkConfig) -> None:
         handle.write("\n")
 
 
+def save_checkpoint(path: Path, checkpoint: dict) -> None:
+    """Write checkpoints atomically so an interrupted save does not corrupt the last good file."""
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    torch.save(checkpoint, tmp_path)
+    tmp_path.replace(path)
+
+
 def safe_metric_name(name: str) -> str:
     return (
         name.replace(" ", "_")
@@ -187,6 +196,98 @@ def safe_metric_name(name: str) -> str:
         .replace("(", "")
         .replace(")", "")
     )
+
+
+def get_rng_state() -> dict:
+    state = {
+        "torch": torch.get_rng_state(),
+        "numpy": np.random.get_state(),
+    }
+    if torch.cuda.is_available():
+        state["torch_cuda"] = torch.cuda.get_rng_state_all()
+    return state
+
+
+def set_rng_state(state: dict | None) -> None:
+    if not state:
+        return
+
+    torch_state = state.get("torch")
+    numpy_state = state.get("numpy")
+    cuda_state = state.get("torch_cuda")
+    if torch_state is not None:
+        torch.set_rng_state(torch_state)
+    if numpy_state is not None:
+        np.random.set_state(numpy_state)
+    if cuda_state is not None and torch.cuda.is_available():
+        torch.cuda.set_rng_state_all(cuda_state)
+
+
+def build_checkpoint_payload(
+    *,
+    epoch: int,
+    model: nn.Module,
+    model_ema: "ModelEma | None",
+    optimizer,
+    scheduler,
+    best_val: list[float],
+    best_test: list[float],
+    best_mean_val: float,
+    config: BenchmarkConfig,
+) -> dict:
+    return {
+        "epoch": epoch,
+        "model_state_dict": model.state_dict(),
+        "model_ema_state_dict": (
+            model_ema.module.state_dict() if model_ema is not None else None
+        ),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "scheduler_state_dict": scheduler.state_dict(),
+        "best_val": best_val,
+        "best_test": best_test,
+        "best_mean_val": best_mean_val,
+        "rng_state": get_rng_state(),
+        "config": vars(config),
+    }
+
+
+def resolve_resume_checkpoint(config: BenchmarkConfig, checkpoint_dir: Path) -> Path | None:
+    if config.resume_from is not None:
+        return config.resume_from
+
+    last_checkpoint = checkpoint_dir / "last_checkpoint.pt"
+    if config.auto_resume and last_checkpoint.exists():
+        return last_checkpoint
+
+    return None
+
+
+def load_training_checkpoint(
+    checkpoint_path: Path,
+    *,
+    model: nn.Module,
+    model_ema: "ModelEma | None",
+    optimizer,
+    scheduler,
+    device: torch.device,
+) -> dict:
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    model.load_state_dict(checkpoint["model_state_dict"])
+
+    ema_state = checkpoint.get("model_ema_state_dict")
+    if model_ema is not None and ema_state is not None:
+        model_ema.module.load_state_dict(ema_state)
+
+    optimizer_state = checkpoint.get("optimizer_state_dict")
+    if optimizer_state is not None:
+        optimizer.load_state_dict(optimizer_state)
+
+    scheduler_state = checkpoint.get("scheduler_state_dict")
+    if scheduler_state is not None:
+        scheduler.load_state_dict(scheduler_state)
+
+    set_rng_state(checkpoint.get("rng_state"))
+    return checkpoint
 
 
 class ModelEma:
@@ -325,6 +426,29 @@ def train_single_baseline(
     best_mean_val = float("inf")
     best_val = [float("inf")] * len(PROPERTY_NAMES)
     best_test = [float("inf")] * len(PROPERTY_NAMES)
+    start_epoch = 1
+
+    resume_checkpoint = resolve_resume_checkpoint(config, checkpoint_dir)
+    if resume_checkpoint is not None:
+        if not resume_checkpoint.exists():
+            raise FileNotFoundError(f"Resume checkpoint does not exist: {resume_checkpoint}")
+
+        checkpoint = load_training_checkpoint(
+            resume_checkpoint,
+            model=model,
+            model_ema=model_ema,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            device=device,
+        )
+        start_epoch = int(checkpoint["epoch"]) + 1
+        best_val = checkpoint.get("best_val", best_val)
+        best_test = checkpoint.get("best_test", best_test)
+        best_mean_val = float(checkpoint.get("best_mean_val", best_mean_val))
+        print(
+            f"Resuming from {resume_checkpoint} "
+            f"at epoch {start_epoch} with best mean validation MAE {best_mean_val:.4f}"
+        )
 
     print(f"#params: {sum(p.numel() for p in model.parameters()):,}")
     print(f"Training {config.model_name} for all 19 QM9 targets")
@@ -338,7 +462,7 @@ def train_single_baseline(
     )
 
     with SummaryWriter(log_dir=str(log_dir)) as writer:
-        for epoch in range(1, config.epochs + 1):
+        for epoch in range(start_epoch, config.epochs + 1):
             print(f"\n=== Epoch {epoch} ===")
             train_loss = train_epoch(
                 model,
@@ -365,30 +489,33 @@ def train_single_baseline(
                 )
 
             mean_val_mae = sum(val_mae) / len(val_mae)
+            best_improved = False
             if mean_val_mae < best_mean_val:
                 best_mean_val = mean_val_mae
                 best_val = val_mae
                 best_test = test_mae
-
-                torch.save(
-                    {
-                        "epoch": epoch,
-                        "model_state_dict": model.state_dict(),
-                        "model_ema_state_dict": (
-                            model_ema.module.state_dict() if model_ema is not None else None
-                        ),
-                        "optimizer_state_dict": optimizer.state_dict(),
-                        "best_val": best_val,
-                        "best_test": best_test,
-                        "best_mean_val": best_mean_val,
-                        "config": vars(config),
-                    },
-                    checkpoint_dir / "best_model.pt",
-                )
+                best_improved = True
                 write_best_metrics(config.output_dir / "best_val_test_mae.csv", best_val, best_test)
-                print(f"Saved best model with mean validation MAE {best_mean_val:.4f}")
 
             scheduler.step()
+            checkpoint_payload = build_checkpoint_payload(
+                epoch=epoch,
+                model=model,
+                model_ema=model_ema,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                best_val=best_val,
+                best_test=best_test,
+                best_mean_val=best_mean_val,
+                config=config,
+            )
+            save_checkpoint(
+                checkpoint_dir / "last_checkpoint.pt",
+                checkpoint_payload,
+            )
+            if best_improved:
+                save_checkpoint(checkpoint_dir / "best_model.pt", checkpoint_payload)
+                print(f"Saved best model with mean validation MAE {best_mean_val:.4f}")
 
     print("\nFinished training.")
     print("Best validation and test MAEs per property:")
@@ -494,6 +621,18 @@ def parse_benchmark_args(
     parser.add_argument("--train-size", type=int, default=110_000)
     parser.add_argument("--valid-size", type=int, default=10_000)
     parser.add_argument("--device", default="cuda", choices=["auto", "cpu", "cuda"])
+    parser.add_argument(
+        "--resume-from",
+        type=Path,
+        default=None,
+        help="Resume training from a specific checkpoint, for example runs/GCN/checkpoints/last_checkpoint.pt.",
+    )
+    parser.add_argument(
+        "--auto-resume",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Automatically resume from output-dir/checkpoints/last_checkpoint.pt when it exists.",
+    )
     args = parser.parse_args()
     if args.split_seed is None:
         args.split_seed = args.seed

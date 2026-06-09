@@ -66,8 +66,23 @@ runs/<model>/
   config.json
   best_val_test_mae.csv
   checkpoints/best_model.pt
+  checkpoints/last_checkpoint.pt
   logs/
 ```
+
+Training automatically writes `checkpoints/last_checkpoint.pt` after every completed epoch.
+If a run is interrupted, launch the same command again with the same `--output-dir`; the
+benchmark will resume from that checkpoint and continue at the next epoch. To resume from
+a specific file, pass:
+
+```bash
+python benchmarking/Methods/GCN.py \
+  --resume-from runs/GCN/checkpoints/last_checkpoint.pt \
+  --device cuda
+```
+
+Use `--no-auto-resume` when you intentionally want to ignore an existing recovery
+checkpoint and start a fresh run in the same output directory.
 
 The adjacency-aware Equiformer entry point uses Equiformer-style QM9 defaults: AdamW, cosine warmup scheduling, EMA, 110k/10k train/validation split sizes, and repeated seeds. Run the full comparison with:
 

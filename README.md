@@ -228,7 +228,7 @@ python benchmarking/Methods/se3transformer.py --epochs 10 --device cuda
 python benchmarking/Methods/equiformer_pt_cloud.py --epochs 10 --device cuda
 ```
 
-Each benchmark run writes reproducible artifacts under `runs/<model>/`, including the configuration, best validation/test metrics, checkpoints, and logs.
+Each benchmark run writes reproducible artifacts under `runs/<model>/`, including the configuration, best validation/test metrics, checkpoints, and logs. A recovery checkpoint is saved after every completed epoch at `runs/<model>/checkpoints/last_checkpoint.pt`; rerunning the same command with the same `--output-dir` automatically resumes from it. Use `--resume-from <checkpoint>` to choose a specific checkpoint or `--no-auto-resume` to start fresh in an existing output directory.
 
 The adjacency-aware Equiformer entry point is configured with Equiformer-style QM9 defaults: AdamW, cosine warmup scheduling, EMA, train/validation sizes of 110k/10k, and three repeated split/training seeds. A full comparison run is:
 
