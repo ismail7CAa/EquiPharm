@@ -11,6 +11,15 @@ from unittest.mock import patch
 
 from pharmacophore.core.metrics import bedroc, enrichment_factor, write_outputs
 
+try:
+    import torch
+    from pharmacophore.core.matching import hungarian_matching_score, matching_score, sinkhorn_matching_score
+except ModuleNotFoundError:
+    torch = None
+    hungarian_matching_score = None
+    matching_score = None
+    sinkhorn_matching_score = None
+
 
 class ScreeningMetricsTests(unittest.TestCase):
     def test_write_outputs_exports_early_recognition_metrics_and_roc_coordinates(self):
@@ -55,6 +64,48 @@ class ScreeningMetricsTests(unittest.TestCase):
 
         self.assertGreater(enrichment_factor(strong_scores, labels, fraction=0.25), 1.0)
         self.assertGreater(bedroc(strong_scores, labels), bedroc(weak_scores, labels))
+
+    def test_hungarian_matching_uses_one_to_one_assignments(self):
+        if torch is None:
+            self.skipTest("torch is not installed")
+        similarity = torch.tensor(
+            [
+                [0.9, 0.2],
+                [0.8, 0.7],
+            ],
+            dtype=torch.float32,
+        )
+
+        self.assertAlmostEqual(hungarian_matching_score(similarity), 0.8, places=6)
+
+    def test_sinkhorn_matching_returns_soft_score(self):
+        if torch is None:
+            self.skipTest("torch is not installed")
+        similarity = torch.eye(3, dtype=torch.float32)
+        score = sinkhorn_matching_score(similarity, temperature=0.1, iterations=20)
+
+        self.assertGreater(score, 0.0)
+        self.assertLessEqual(score, 1.0)
+
+    def test_matching_score_penalizes_feature_family_mismatch(self):
+        if torch is None:
+            self.skipTest("torch is not installed")
+        query = torch.eye(2, dtype=torch.float32)
+        candidate = torch.eye(2, dtype=torch.float32)
+        query_metadata = [{"family": "Donor"}, {"family": "Acceptor"}]
+        candidate_metadata = [{"family": "Acceptor"}, {"family": "Donor"}]
+
+        score, similarity = matching_score(
+            query,
+            candidate,
+            query_metadata=query_metadata,
+            candidate_metadata=candidate_metadata,
+            method="hungarian",
+            mismatch_penalty=0.5,
+        )
+
+        self.assertEqual(tuple(similarity.shape), (2, 2))
+        self.assertLess(score, 1.0)
 
 
 if __name__ == "__main__":

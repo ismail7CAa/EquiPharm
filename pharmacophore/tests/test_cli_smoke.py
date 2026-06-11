@@ -14,9 +14,16 @@ from unittest.mock import Mock, patch
 fake_screening = types.ModuleType("pharmacophore.core.screening")
 fake_screening.screen_actives_decoys = Mock()
 sys.modules.setdefault("pharmacophore.core.screening", fake_screening)
+fake_matching_screening = types.ModuleType("pharmacophore.core.matching_screening")
+fake_matching_screening.screen_actives_decoys_matching = Mock()
+sys.modules.setdefault("pharmacophore.core.matching_screening", fake_matching_screening)
 
 from pharmacophore.EquiPharm import cli as equipharm_cli
 from pharmacophore.EquiPharm import screening as equipharm_screening
+from pharmacophore.EquiPharm_Hungarian import cli as hungarian_cli
+from pharmacophore.EquiPharm_Hungarian import screening as hungarian_screening
+from pharmacophore.EquiPharm_Sinkhorn import cli as sinkhorn_cli
+from pharmacophore.EquiPharm_Sinkhorn import screening as sinkhorn_screening
 from pharmacophore.Equiformer_with_optimization import cli as equiformer_cli
 from pharmacophore.Equiformer_with_optimization import screening as equiformer_screening
 from pharmacophore.CDPKit import cli as cdpkit_cli
@@ -42,6 +49,40 @@ class PipelineWrapperTests(unittest.TestCase):
         self.assertEqual(kwargs["pipeline_name"], "EquiPharm")
         self.assertEqual(kwargs["model_module"], "benchmarking.Methods.equiformer_encoder_pharmaco_feat")
         self.assertTrue(kwargs["use_pharmacophore_features"])
+
+    def test_equipharm_hungarian_wrapper_sets_expected_defaults(self):
+        with patch.object(hungarian_screening, "screen_actives_decoys_matching") as run:
+            run.return_value = {"roc_auc": 1.0}
+            result = hungarian_screening.run_equipharm_hungarian_screening(
+                checkpoint_path="checkpoint.pt",
+                query_ligand="query.mol2",
+                actives_dir="actives_sdf",
+                decoys_dir="decoys_sdf",
+                output_dir="pharmacophore/results/EquiPharm_Hungarian/aces",
+            )
+
+        self.assertEqual(result, {"roc_auc": 1.0})
+        kwargs = run.call_args.kwargs
+        self.assertEqual(kwargs["pipeline_name"], "EquiPharm_Hungarian")
+        self.assertEqual(kwargs["matching_method"], "hungarian")
+        self.assertEqual(kwargs["model_module"], "benchmarking.Methods.equiformer_encoder_hungarian")
+
+    def test_equipharm_sinkhorn_wrapper_sets_expected_defaults(self):
+        with patch.object(sinkhorn_screening, "screen_actives_decoys_matching") as run:
+            run.return_value = {"roc_auc": 1.0}
+            result = sinkhorn_screening.run_equipharm_sinkhorn_screening(
+                checkpoint_path="checkpoint.pt",
+                query_ligand="query.mol2",
+                actives_dir="actives_sdf",
+                decoys_dir="decoys_sdf",
+                output_dir="pharmacophore/results/EquiPharm_Sinkhorn/aces",
+            )
+
+        self.assertEqual(result, {"roc_auc": 1.0})
+        kwargs = run.call_args.kwargs
+        self.assertEqual(kwargs["pipeline_name"], "EquiPharm_Sinkhorn")
+        self.assertEqual(kwargs["matching_method"], "sinkhorn")
+        self.assertEqual(kwargs["model_module"], "benchmarking.Methods.equiformer_encoder_sinkhorn")
 
     def test_equiformer_wrapper_sets_expected_defaults(self):
         with patch.object(equiformer_screening, "screen_actives_decoys") as run:
@@ -205,6 +246,58 @@ class CliConfigTests(unittest.TestCase):
         self.assertEqual(kwargs["target_name"], "aces")
         self.assertEqual(kwargs["limit"], 5)
         self.assertEqual(kwargs["output_dir"], "pharmacophore/results/Equiformer_with_optimization/aces")
+
+    def test_equipharm_hungarian_cli_reads_config_without_data_or_checkpoint(self):
+        config = {
+            "checkpoint_path": "checkpoints/equipharm/best_model.pt",
+            "query_ligand": "data/DUD-E/aces/crystal_ligand.mol2",
+            "actives_dir": "data/DUD-E/aces/actives_sdf",
+            "decoys_dir": "data/DUD-E/aces/decoys_sdf",
+            "output_dir": "pharmacophore/results/EquiPharm_Hungarian/aces",
+            "target_name": "aces",
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "target.json"
+            config_path.write_text(json.dumps(config), encoding="utf-8")
+            argv = ["cli", "--config", str(config_path), "--limit", "5", "--mismatch-penalty", "0.75"]
+            with (
+                patch.object(sys, "argv", argv),
+                patch.object(sys, "stdout", StringIO()),
+                patch.object(hungarian_cli, "run_equipharm_hungarian_screening") as run,
+            ):
+                run.return_value = {"pipeline": "EquiPharm_Hungarian", "target": "aces"}
+                hungarian_cli.main()
+
+        kwargs = run.call_args.kwargs
+        self.assertEqual(kwargs["target_name"], "aces")
+        self.assertEqual(kwargs["limit"], 5)
+        self.assertEqual(kwargs["mismatch_penalty"], 0.75)
+
+    def test_equipharm_sinkhorn_cli_reads_config_without_data_or_checkpoint(self):
+        config = {
+            "checkpoint_path": "checkpoints/equipharm/best_model.pt",
+            "query_ligand": "data/DUD-E/aces/crystal_ligand.mol2",
+            "actives_dir": "data/DUD-E/aces/actives_sdf",
+            "decoys_dir": "data/DUD-E/aces/decoys_sdf",
+            "output_dir": "pharmacophore/results/EquiPharm_Sinkhorn/aces",
+            "target_name": "aces",
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "target.json"
+            config_path.write_text(json.dumps(config), encoding="utf-8")
+            argv = ["cli", "--config", str(config_path), "--limit", "5", "--sinkhorn-temperature", "0.2"]
+            with (
+                patch.object(sys, "argv", argv),
+                patch.object(sys, "stdout", StringIO()),
+                patch.object(sinkhorn_cli, "run_equipharm_sinkhorn_screening") as run,
+            ):
+                run.return_value = {"pipeline": "EquiPharm_Sinkhorn", "target": "aces"}
+                sinkhorn_cli.main()
+
+        kwargs = run.call_args.kwargs
+        self.assertEqual(kwargs["target_name"], "aces")
+        self.assertEqual(kwargs["limit"], 5)
+        self.assertEqual(kwargs["sinkhorn_temperature"], 0.2)
 
     def test_cdpkit_cli_reads_config_without_running_external_tools(self):
         config = {
