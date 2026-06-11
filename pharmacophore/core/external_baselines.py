@@ -17,6 +17,15 @@ TARGET_QUERY_NAMES = (
     "crystal_ligand.pml",
 )
 
+LIGAND_QUERY_NAMES = (
+    "crystal_ligand.mol2",
+    "crystal_ligand.sdf",
+    "query_ligand.mol2",
+    "query_ligand.sdf",
+    "ligand.mol2",
+    "ligand.sdf",
+)
+
 
 def collect_labeled_sdf_files(
     actives_dir: str | Path,
@@ -61,6 +70,21 @@ def find_cdpkit_query(target_dir: str | Path) -> Path | None:
         query_path = target_path / query_name
         if query_path.exists():
             return query_path
+    return None
+
+
+def find_query_ligand(target_dir: str | Path) -> Path | None:
+    target_path = Path(target_dir)
+    for query_name in LIGAND_QUERY_NAMES:
+        query_path = target_path / query_name
+        if query_path.exists():
+            return query_path
+    mol2_candidates = sorted(target_path.glob("*_ligand.mol2"))
+    if mol2_candidates:
+        return mol2_candidates[0]
+    sdf_candidates = sorted(target_path.glob("*_ligand.sdf"))
+    if sdf_candidates:
+        return sdf_candidates[0]
     return None
 
 

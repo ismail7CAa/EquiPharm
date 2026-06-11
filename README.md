@@ -113,6 +113,9 @@ scripts/                           # Dataset and checkpoint preparation helpers
 
 - `QM9`: used for benchmarking molecular representation models.
 - `DUD-E`: used for pharmacophore screening, active/decoy ranking, and evaluation.
+- `LIT-PCBA`: optional virtual-screening benchmark with active/inactive target sets.
+- `DEKOIS 2.0`: optional active/decoy benchmark for retrospective virtual screening.
+- `BayesBind`: optional structure-based virtual-screening benchmark.
 
 Datasets and trained checkpoints are expected to be stored locally and are not committed to the repository.
 
@@ -150,7 +153,40 @@ bash scripts/download_datasets.sh dude
 bash scripts/download_datasets.sh qm9
 ```
 
-After this setup, the default benchmark path `data/QM9` and screening path `data/DUD-E/<target>` are ready to use without moving files.
+Additional screening datasets can be downloaded from their official distributions and normalized into the same target layout:
+
+```bash
+LIT_PCBA_URL="<official-lit-pcba-archive-url>" bash scripts/download_datasets.sh lit-pcba
+DEKOIS2_URL="<official-dekois2-archive-url>" bash scripts/download_datasets.sh dekois2
+BAYESBIND_URL="<official-bayesbind-archive-url>" bash scripts/download_datasets.sh bayesbind
+```
+
+If you already downloaded or unpacked one of these datasets manually, normalize it directly:
+
+```bash
+python scripts/prepare_screening_dataset.py \
+  --source-dir path/to/LIT-PCBA \
+  --output-dir data/LIT-PCBA
+
+python scripts/prepare_screening_dataset.py \
+  --source-dir path/to/DEKOIS2 \
+  --output-dir data/DEKOIS2
+
+python scripts/prepare_screening_dataset.py \
+  --source-dir path/to/BayesBind \
+  --output-dir data/BayesBind
+```
+
+The normalized screening layout is:
+
+```text
+data/<dataset>/<target>/
+  crystal_ligand.mol2  # or crystal_ligand.sdf
+  actives_sdf/
+  decoys_sdf/
+```
+
+After this setup, the default benchmark path `data/QM9` and screening paths such as `data/DUD-E/<target>`, `data/LIT-PCBA/<target>`, `data/DEKOIS2/<target>`, and `data/BayesBind/<target>` are ready to use without moving files.
 
 ## Model Checkpoint
 
@@ -325,6 +361,31 @@ python -m pharmacophore.run_all_screening \
   --dataset-dir data/DUD-E \
   --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
   --output-dir pharmacophore/results \
+  --pharmacomatch-command-template "python screen.py --query {query_ligand} --candidate {candidate}" \
+  --pharmacomatch-score-json-key score
+```
+
+Run the same all-method pipeline on additional normalized datasets by changing `--dataset-dir`:
+
+```bash
+python -m pharmacophore.run_all_screening \
+  --dataset-dir data/LIT-PCBA \
+  --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
+  --output-dir pharmacophore/results/LIT-PCBA \
+  --pharmacomatch-command-template "python screen.py --query {query_ligand} --candidate {candidate}" \
+  --pharmacomatch-score-json-key score
+
+python -m pharmacophore.run_all_screening \
+  --dataset-dir data/DEKOIS2 \
+  --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
+  --output-dir pharmacophore/results/DEKOIS2 \
+  --pharmacomatch-command-template "python screen.py --query {query_ligand} --candidate {candidate}" \
+  --pharmacomatch-score-json-key score
+
+python -m pharmacophore.run_all_screening \
+  --dataset-dir data/BayesBind \
+  --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
+  --output-dir pharmacophore/results/BayesBind \
   --pharmacomatch-command-template "python screen.py --query {query_ligand} --candidate {candidate}" \
   --pharmacomatch-score-json-key score
 ```

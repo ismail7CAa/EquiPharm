@@ -14,8 +14,8 @@ try:
     from .matching import matching_score
     from .metrics import write_outputs
     from .molecule_io import (
-        mol2_to_rdkit_mol,
         prepare_mol_for_pharmacophore,
+        read_query_ligand,
         rdkit_mol_to_pyg_equiformer,
         read_sdf_mol,
     )
@@ -25,8 +25,8 @@ except ImportError:
     from pharmacophore.core.matching import matching_score
     from pharmacophore.core.metrics import write_outputs
     from pharmacophore.core.molecule_io import (
-        mol2_to_rdkit_mol,
         prepare_mol_for_pharmacophore,
+        read_query_ligand,
         rdkit_mol_to_pyg_equiformer,
         read_sdf_mol,
     )
@@ -147,7 +147,7 @@ def screen_actives_decoys_matching(
         model_module=model_module,
         model_class=model_class,
     )
-    query_mol = mol2_to_rdkit_mol(query_ligand, sanitize=True, keep_hs=False)
+    query_mol = read_query_ligand(query_ligand, sanitize=True, keep_hs=False)
     query_encoding = encode_feature_set(model, query_mol, device_obj, name="query_ligand", idx=0)
 
     active_files = sorted(Path(actives_dir).glob("*.sdf"))

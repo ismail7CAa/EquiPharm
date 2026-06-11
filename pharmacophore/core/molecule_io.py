@@ -146,6 +146,17 @@ def read_sdf_mol(
     return mol
 
 
+def read_query_ligand(path: str | Path, *, sanitize: bool = True, keep_hs: bool = False) -> Chem.Mol:
+    """Read a query ligand from MOL2 or SDF."""
+    query_path = Path(path)
+    suffix = query_path.suffix.lower()
+    if suffix == ".mol2":
+        return mol2_to_rdkit_mol(query_path, sanitize=sanitize, keep_hs=keep_hs)
+    if suffix == ".sdf":
+        return read_sdf_mol(query_path, sanitize=sanitize, remove_hs=not keep_hs, require_3d=True)
+    raise ValueError(f"Unsupported query ligand format: {query_path.suffix}. Use .mol2 or .sdf.")
+
+
 def prepare_mol_for_pharmacophore(mol: Chem.Mol) -> Chem.Mol:
     """Prepare an RDKit molecule for robust pharmacophore feature extraction."""
     prepared = Chem.Mol(mol)

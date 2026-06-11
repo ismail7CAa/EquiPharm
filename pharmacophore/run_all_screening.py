@@ -15,14 +15,14 @@ try:
     from .EquiPharm_Hungarian.screening import run_equipharm_hungarian_screening
     from .EquiPharm_Sinkhorn.screening import run_equipharm_sinkhorn_screening
     from .PharmacoMatch.screening import run_pharmacomatch_screening
-    from .core.external_baselines import discover_dude_targets, find_cdpkit_query, write_dataset_summary
+    from .core.external_baselines import discover_dude_targets, find_cdpkit_query, find_query_ligand, write_dataset_summary
 except ImportError:
     from pharmacophore.CDPKit.screening import run_cdpkit_screening
     from pharmacophore.EquiPharm.screening import run_equipharm_screening
     from pharmacophore.EquiPharm_Hungarian.screening import run_equipharm_hungarian_screening
     from pharmacophore.EquiPharm_Sinkhorn.screening import run_equipharm_sinkhorn_screening
     from pharmacophore.PharmacoMatch.screening import run_pharmacomatch_screening
-    from pharmacophore.core.external_baselines import discover_dude_targets, find_cdpkit_query, write_dataset_summary
+    from pharmacophore.core.external_baselines import discover_dude_targets, find_cdpkit_query, find_query_ligand, write_dataset_summary
 
 
 MODEL_PIPELINES = (
@@ -137,7 +137,7 @@ def run_one_pipeline(args, pipeline: str, target_dir: Path, output_root: Path) -
             raise ValueError("Provide --pharmacomatch-command-template to run PharmacoMatch.")
         return run_pharmacomatch_screening(
             command_template=args.pharmacomatch_command_template,
-            query_ligand=target_dir / "crystal_ligand.mol2",
+            query_ligand=require_query_ligand(target_dir),
             output_dir=output_root / pipeline / target_name,
             score_regex=args.pharmacomatch_score_regex,
             score_json_key=args.pharmacomatch_score_json_key,
@@ -147,7 +147,7 @@ def run_one_pipeline(args, pipeline: str, target_dir: Path, output_root: Path) -
 
     model_kwargs = {
         "checkpoint_path": args.checkpoint,
-        "query_ligand": target_dir / "crystal_ligand.mol2",
+        "query_ligand": require_query_ligand(target_dir),
         "output_dir": output_root / pipeline / target_name,
         "device": args.device,
         "optimize": not args.no_optimize,
@@ -170,6 +170,13 @@ def run_one_pipeline(args, pipeline: str, target_dir: Path, output_root: Path) -
             **model_kwargs,
         )
     raise ValueError(f"Unknown pipeline: {pipeline}")
+
+
+def require_query_ligand(target_dir: Path) -> Path:
+    query_ligand = find_query_ligand(target_dir)
+    if query_ligand is None:
+        raise FileNotFoundError(f"No query ligand found for {target_dir.name}.")
+    return query_ligand
 
 
 def write_combined_scores(output_root: Path, metrics_rows: list[dict]) -> Path:
