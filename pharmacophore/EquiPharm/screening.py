@@ -18,4 +18,5 @@ def run_equipharm_screening(**kwargs):
     kwargs.setdefault("heavy_only", True)
     kwargs.setdefault("exclude_rings", True)
     kwargs.setdefault("one_per_bond", False)
+    kwargs.setdefault("write_named_roc_curve", True)
     return screen_actives_decoys(**kwargs)

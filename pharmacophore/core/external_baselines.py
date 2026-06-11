@@ -155,6 +155,7 @@ def write_baseline_outputs(
         rows,
         pipeline_name=pipeline_name,
         target_name=target_name,
+        write_roc_curve_image=False,
     )
 
 

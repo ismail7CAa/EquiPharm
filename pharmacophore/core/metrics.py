@@ -37,6 +37,8 @@ def write_outputs(
     *,
     pipeline_name: str,
     target_name: str,
+    write_roc_curve_image: bool = True,
+    write_named_roc_curve: bool = False,
 ) -> dict:
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -59,13 +61,25 @@ def write_outputs(
 
     title_prefix = f"{pipeline_name} - {target_name}"
     plot_score_boxplot(df, output_path / "cosine_similarity_boxplot.png", title_prefix=title_prefix)
-    plot_roc_curve(
-        df,
-        metrics["roc_auc"],
-        output_path / "roc_curve_actives_vs_decoys.png",
-        title_prefix=title_prefix,
-    )
+    if write_roc_curve_image:
+        plot_roc_curve(
+            df,
+            metrics["roc_auc"],
+            output_path / "roc_curve_actives_vs_decoys.png",
+            title_prefix=title_prefix,
+        )
+    if write_named_roc_curve:
+        plot_roc_curve(
+            df,
+            metrics["roc_auc"],
+            output_path / f"{safe_filename(pipeline_name)}_{safe_filename(target_name)}_auroc_curve.png",
+            title_prefix=title_prefix,
+        )
     return metrics
+
+
+def safe_filename(value: str) -> str:
+    return "".join(char if char.isalnum() or char in {"-", "_"} else "_" for char in str(value))
 
 
 def enrichment_factor(scores, labels, *, fraction: float) -> float:

@@ -142,6 +142,7 @@ def screen_actives_decoys(
     exclude_rings: bool = True,
     one_per_bond: bool = False,
     limit: int | None = None,
+    write_named_roc_curve: bool = False,
 ) -> dict:
     device_obj = torch.device(device)
     if device_obj.type == "cuda" and not torch.cuda.is_available():
@@ -238,6 +239,7 @@ def screen_actives_decoys(
         rows,
         pipeline_name=pipeline_name,
         target_name=target_name,
+        write_named_roc_curve=write_named_roc_curve,
     )
 
 
