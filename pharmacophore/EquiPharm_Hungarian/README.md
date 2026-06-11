@@ -1,0 +1,24 @@
+# EquiPharm Hungarian
+
+EquiPharm Hungarian keeps the RDKit pharmacophore feature extraction from EquiPharm, but scores molecules by hard one-to-one matching between query and candidate pharmacophore feature embeddings.
+
+The encoder returns feature-level embeddings, the screening layer builds a query-feature by candidate-feature cosine similarity matrix, and Hungarian assignment converts that matrix into one candidate score.
+
+## Run
+
+```bash
+python -m pharmacophore.EquiPharm_Hungarian.cli \
+  --target-dir data/DUD-E/<target> \
+  --target-name <target> \
+  --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
+  --output-dir pharmacophore/results/EquiPharm_Hungarian/<target>
+```
+
+Config example:
+
+```bash
+python -m pharmacophore.EquiPharm_Hungarian.cli \
+  --config pharmacophore/EquiPharm_Hungarian/configs/target.example.json
+```
+
+Each run writes `scores.csv`, `ranked_hits.csv`, `metrics.json`, `screening_performance_summary.csv`, `auroc_curve_coordinates.csv`, and a named AUROC plot such as `EquiPharm_Hungarian_aces_auroc_curve.png`.
