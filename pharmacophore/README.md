@@ -4,7 +4,7 @@
   <img src="../figures/pharmacophore_screening_pipeline_overview.png" alt="Pharmacophore screening pipeline overview" width="850"/>
 </p>
 
-This directory contains two reproducible screening pipelines plus the original exploratory notebooks/scripts.
+This directory contains reproducible screening pipelines plus the original exploratory notebooks/scripts.
 DUD-E data and model checkpoints are not committed to the repository; paths are supplied through config files or CLI arguments.
 
 ## Pipelines
@@ -37,6 +37,47 @@ python -m pharmacophore.EquiPharm.cli \
   --config pharmacophore/EquiPharm/configs/target.example.json
 ```
 
+### EquiPharm Matching Variants
+
+Folders:
+
+```text
+pharmacophore/EquiPharm_Hungarian/
+pharmacophore/EquiPharm_Sinkhorn/
+```
+
+These are copies of EquiPharm that keep the extracted RDKit pharmacophore features as a feature set instead of immediately averaging them into one global vector. For each query-candidate pair, the screening layer builds a query-feature by candidate-feature cosine similarity matrix.
+
+- `EquiPharm_Hungarian` uses hard one-to-one Hungarian assignment.
+- `EquiPharm_Sinkhorn` uses soft optimal-transport matching.
+
+Run Hungarian matching:
+
+```bash
+python -m pharmacophore.EquiPharm_Hungarian.cli \
+  --target-dir data/DUD-E/<target> \
+  --target-name <target> \
+  --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
+  --output-dir pharmacophore/results/EquiPharm_Hungarian/<target>
+```
+
+Run Sinkhorn matching:
+
+```bash
+python -m pharmacophore.EquiPharm_Sinkhorn.cli \
+  --target-dir data/DUD-E/<target> \
+  --target-name <target> \
+  --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
+  --output-dir pharmacophore/results/EquiPharm_Sinkhorn/<target>
+```
+
+Both matching variants write named AUROC plots such as:
+
+```text
+pharmacophore/results/EquiPharm_Hungarian/<target>/EquiPharm_Hungarian_<target>_auroc_curve.png
+pharmacophore/results/EquiPharm_Sinkhorn/<target>/EquiPharm_Sinkhorn_<target>_auroc_curve.png
+```
+
 ### Optional External Baselines
 
 Two external baselines are scaffolded but kept isolated from the main EquiPharm code path:
@@ -56,6 +97,51 @@ python -m pharmacophore.PharmacoMatch.cli \
 
 Both adapters write the same result files as the maintained pipelines under `pharmacophore/results/<pipeline>/<target>/`.
 For full datasets, pass `--dataset-dir data/DUD-E` and the adapters also write `pharmacophore/results/<pipeline>/dataset_metrics.csv`.
+
+### Run All Screening Methods
+
+Use the all-method runner to execute:
+
+```text
+CDPKit
+PharmacoMatch
+EquiPharm
+EquiPharm_Hungarian
+EquiPharm_Sinkhorn
+```
+
+Example for one target smoke run:
+
+```bash
+python -m pharmacophore.run_all_screening \
+  --dataset-dir data/DUD-E \
+  --target aces \
+  --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
+  --output-dir pharmacophore/results \
+  --pharmacomatch-command-template "python screen.py --query {query_ligand} --candidate {candidate}" \
+  --pharmacomatch-score-json-key score \
+  --limit 100
+```
+
+Example for all DUD-E targets:
+
+```bash
+python -m pharmacophore.run_all_screening \
+  --dataset-dir data/DUD-E \
+  --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
+  --output-dir pharmacophore/results \
+  --pharmacomatch-command-template "python screen.py --query {query_ligand} --candidate {candidate}" \
+  --pharmacomatch-score-json-key score
+```
+
+The runner writes:
+
+```text
+pharmacophore/results/all_screening_metrics.csv
+pharmacophore/results/all_screening_scores.csv
+```
+
+`all_screening_metrics.csv` contains AUROC, PR-AUC, EF1%, and BEDROC(alpha=20) for every completed method-target run. `all_screening_scores.csv` combines the per-candidate score rows from every completed method-target run.
 
 ### Equiformer With Optimization
 
@@ -112,6 +198,8 @@ Each pipeline has an example target config:
 
 ```text
 pharmacophore/EquiPharm/configs/target.example.json
+pharmacophore/EquiPharm_Hungarian/configs/target.example.json
+pharmacophore/EquiPharm_Sinkhorn/configs/target.example.json
 pharmacophore/Equiformer_with_optimization/configs/target.example.json
 ```
 
@@ -129,7 +217,8 @@ pharmacophore/results/<pipeline>/<target>/
   screening_performance_summary.csv
   auroc_curve_coordinates.csv
   cosine_similarity_boxplot.png
-  roc_curve_actives_vs_decoys.png
+  roc_curve_actives_vs_decoys.png       # EquiPharm-family pipelines
+  <pipeline>_<target>_auroc_curve.png   # EquiPharm, EquiPharm_Hungarian, EquiPharm_Sinkhorn
 ```
 
 `metrics.json` and `screening_performance_summary.csv` include AUROC, PR-AUC, EF1%, and BEDROC(alpha=20), plus the pipeline name and protein target name.
@@ -165,17 +254,18 @@ python -m unittest pharmacophore.tests.test_cli_smoke
 
 ## Shared Utilities
 
-The two pipelines share:
+The maintained pipelines share:
 
 - `core/molecule_io.py` - MOL2/SDF readers, molecule preparation, RDKit-to-PyG conversion.
 - `core/torsion.py` - black-box torsion optimization.
-- `core/screening.py` - generic screening engine used by both pipelines.
+- `core/screening.py` - generic screening engine used by embedding-cosine pipelines.
+- `core/matching.py` and `core/matching_screening.py` - feature-level matching scorers and screening engine.
 - `core/metrics.py` - metrics and plot generation.
 
 ## Legacy Scripts
 
 Older exploratory Python scripts are preserved in `legacy/` for traceability.
-They are useful for comparison while reviewing the migration, but the maintained software entry points are the two pipeline CLIs.
+They are useful for comparison while reviewing the migration, but the maintained software entry points are the pipeline CLIs.
 
 ## Reference Notebooks
 
