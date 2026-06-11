@@ -65,7 +65,7 @@ class PipelineWrapperTests(unittest.TestCase):
         kwargs = run.call_args.kwargs
         self.assertEqual(kwargs["pipeline_name"], "EquiPharm_Hungarian")
         self.assertEqual(kwargs["matching_method"], "hungarian")
-        self.assertEqual(kwargs["model_module"], "benchmarking.Methods.equiformer_encoder_hungarian")
+        self.assertEqual(kwargs["model_module"], "benchmarking.Methods.equiformer_encoder_matching")
 
     def test_equipharm_sinkhorn_wrapper_sets_expected_defaults(self):
         with patch.object(sinkhorn_screening, "screen_actives_decoys_matching") as run:
@@ -82,7 +82,7 @@ class PipelineWrapperTests(unittest.TestCase):
         kwargs = run.call_args.kwargs
         self.assertEqual(kwargs["pipeline_name"], "EquiPharm_Sinkhorn")
         self.assertEqual(kwargs["matching_method"], "sinkhorn")
-        self.assertEqual(kwargs["model_module"], "benchmarking.Methods.equiformer_encoder_sinkhorn")
+        self.assertEqual(kwargs["model_module"], "benchmarking.Methods.equiformer_encoder_matching")
 
     def test_equiformer_wrapper_sets_expected_defaults(self):
         with patch.object(equiformer_screening, "screen_actives_decoys") as run:

@@ -81,6 +81,8 @@ The pharmacophore pipeline applies the selected 3D representation approach to vi
 - `Equiformer_with_optimization`: a baseline Equiformer screening workflow with the same torsion optimization and active/decoy evaluation flow, but without explicit pharmacophore feature attachment.
 - `CDPKit` and `PharmacoMatch`: optional external baseline adapters.
 
+The Hungarian and Sinkhorn variants share `benchmarking.Methods.equiformer_encoder_matching`; they differ only in the matching scorer selected by their screening wrappers.
+
 These workflows use shared utilities for molecule loading, RDKit-to-PyG conversion, torsion optimization, scoring, metric calculation, and plot generation. This keeps the screening logic reproducible while allowing direct comparison between pharmacophore-aware, matching-based, and external screening methods.
 
 ## Repository Structure

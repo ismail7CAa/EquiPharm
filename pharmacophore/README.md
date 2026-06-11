@@ -51,6 +51,8 @@ These are copies of EquiPharm that keep the extracted RDKit pharmacophore featur
 - `EquiPharm_Hungarian` uses hard one-to-one Hungarian assignment.
 - `EquiPharm_Sinkhorn` uses soft optimal-transport matching.
 
+Both matching pipelines use the same shared encoder module, `benchmarking.Methods.equiformer_encoder_matching`; the only difference is the matching method selected in the screening wrapper.
+
 Run Hungarian matching:
 
 ```bash

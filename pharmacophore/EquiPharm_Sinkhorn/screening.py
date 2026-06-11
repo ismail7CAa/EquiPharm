@@ -10,7 +10,7 @@ except ImportError:
 
 def run_equipharm_sinkhorn_screening(**kwargs):
     """Run pharmacophore-feature Equiformer screening with Sinkhorn matching."""
-    kwargs.setdefault("model_module", "benchmarking.Methods.equiformer_encoder_sinkhorn")
+    kwargs.setdefault("model_module", "benchmarking.Methods.equiformer_encoder_matching")
     kwargs.setdefault("model_class", "EquiformerQM9")
     kwargs.setdefault("pipeline_name", "EquiPharm_Sinkhorn")
     kwargs.setdefault("matching_method", "sinkhorn")
