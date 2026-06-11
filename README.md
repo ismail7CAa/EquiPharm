@@ -371,21 +371,21 @@ Run the same all-method pipeline on additional normalized datasets by changing `
 python -m pharmacophore.run_all_screening \
   --dataset-dir data/LIT-PCBA \
   --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
-  --output-dir pharmacophore/results/LIT-PCBA \
+  --output-dir pharmacophore/results \
   --pharmacomatch-command-template "python screen.py --query {query_ligand} --candidate {candidate}" \
   --pharmacomatch-score-json-key score
 
 python -m pharmacophore.run_all_screening \
   --dataset-dir data/DEKOIS2 \
   --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
-  --output-dir pharmacophore/results/DEKOIS2 \
+  --output-dir pharmacophore/results \
   --pharmacomatch-command-template "python screen.py --query {query_ligand} --candidate {candidate}" \
   --pharmacomatch-score-json-key score
 
 python -m pharmacophore.run_all_screening \
   --dataset-dir data/BayesBind \
   --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
-  --output-dir pharmacophore/results/BayesBind \
+  --output-dir pharmacophore/results \
   --pharmacomatch-command-template "python screen.py --query {query_ligand} --candidate {candidate}" \
   --pharmacomatch-score-json-key score
 ```
@@ -408,7 +408,7 @@ python -m pharmacophore.Equiformer_with_optimization.cli \
 
 ## Outputs
 
-Screening runs write target-specific results such as:
+Single-pipeline screening runs write target-specific results such as:
 
 ```text
 pharmacophore/results/<pipeline>/<target>/
@@ -425,11 +425,30 @@ pharmacophore/results/<pipeline>/<target>/
 The all-method runner also writes:
 
 ```text
-pharmacophore/results/all_screening_metrics.csv
-pharmacophore/results/all_screening_scores.csv
+pharmacophore/results/<dataset>/
+  all_screening_metrics.csv
+  all_screening_scores.csv
+  <pipeline>/
+    <target>/
+      scores.csv
+      ranked_hits.csv
+      metrics.json
+      screening_performance_summary.csv
+      auroc_curve_coordinates.csv
+      roc_curve_actives_vs_decoys.png       # EquiPharm-family pipelines
+      <pipeline>_<target>_auroc_curve.png   # EquiPharm, EquiPharm_Hungarian, EquiPharm_Sinkhorn
 ```
 
-These outputs support comparison between active and decoy molecules through AUROC, PR-AUC, EF1%, BEDROC(alpha=20), score distributions, and ROC analysis.
+Examples:
+
+```text
+pharmacophore/results/DUD-E/all_screening_metrics.csv
+pharmacophore/results/LIT-PCBA/all_screening_metrics.csv
+pharmacophore/results/DEKOIS2/all_screening_metrics.csv
+pharmacophore/results/BayesBind/all_screening_metrics.csv
+```
+
+These dataset-specific outputs support comparison between active and decoy molecules through AUROC, PR-AUC, EF1%, BEDROC(alpha=20), score distributions, and ROC analysis without mixing benchmark sources.
 
 ## Tests
 

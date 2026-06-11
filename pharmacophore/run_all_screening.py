@@ -35,8 +35,9 @@ MODEL_PIPELINES = (
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Run all configured screening methods on DUD-E targets.")
+    parser = argparse.ArgumentParser(description="Run all configured screening methods on active-decoy targets.")
     parser.add_argument("--dataset-dir", type=Path, required=True)
+    parser.add_argument("--dataset-name", help="Name used for dataset-specific result folders. Defaults to dataset-dir name.")
     parser.add_argument("--output-dir", type=Path, default=Path("pharmacophore/results"))
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--device", choices=["cuda", "cpu"], default="cuda")
@@ -60,7 +61,8 @@ def parse_args():
 
 def main() -> None:
     args = parse_args()
-    output_root = Path(args.output_dir)
+    dataset_name = args.dataset_name or infer_dataset_name(args.dataset_dir)
+    output_root = resolve_output_root(args.output_dir, dataset_name)
     output_root.mkdir(parents=True, exist_ok=True)
 
     requested_targets = set(args.target or [])
@@ -81,9 +83,11 @@ def main() -> None:
         for pipeline in MODEL_PIPELINES:
             try:
                 metrics = run_one_pipeline(args, pipeline, target_dir, output_root)
+                metrics["dataset"] = dataset_name
                 metrics["status"] = "ok"
             except Exception as exc:
                 metrics = {
+                    "dataset": dataset_name,
                     "pipeline": pipeline,
                     "target": target_name,
                     "status": "failed",
@@ -100,6 +104,7 @@ def main() -> None:
 
     result = {
         "output_dir": str(output_root),
+        "dataset": dataset_name,
         "metrics_csv": str(metrics_path),
         "scores_csv": str(scores_path),
         "n_targets": len(target_dirs),
@@ -108,6 +113,18 @@ def main() -> None:
         "n_failed": sum(row.get("status") == "failed" for row in metrics_rows),
     }
     print(json.dumps(result, indent=2, sort_keys=True))
+
+
+def infer_dataset_name(dataset_dir: str | Path) -> str:
+    dataset_path = Path(dataset_dir)
+    return dataset_path.name or dataset_path.resolve().name
+
+
+def resolve_output_root(output_dir: str | Path, dataset_name: str) -> Path:
+    output_path = Path(output_dir)
+    if output_path.name == dataset_name:
+        return output_path
+    return output_path / dataset_name
 
 
 def run_one_pipeline(args, pipeline: str, target_dir: Path, output_root: Path) -> dict:
@@ -186,7 +203,10 @@ def write_combined_scores(output_root: Path, metrics_rows: list[dict]) -> Path:
             continue
         score_path = output_root / row["pipeline"] / row["target"] / "scores.csv"
         if score_path.exists():
-            score_tables.append(pd.read_csv(score_path))
+            df = pd.read_csv(score_path)
+            if "dataset" not in df.columns:
+                df.insert(0, "dataset", row.get("dataset", output_root.name))
+            score_tables.append(df)
 
     combined_path = output_root / "all_screening_scores.csv"
     if score_tables:

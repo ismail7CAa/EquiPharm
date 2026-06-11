@@ -142,21 +142,21 @@ The same command works for the normalized LIT-PCBA, DEKOIS2, and BayesBind roots
 python -m pharmacophore.run_all_screening \
   --dataset-dir data/LIT-PCBA \
   --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
-  --output-dir pharmacophore/results/LIT-PCBA \
+  --output-dir pharmacophore/results \
   --pharmacomatch-command-template "python screen.py --query {query_ligand} --candidate {candidate}" \
   --pharmacomatch-score-json-key score
 
 python -m pharmacophore.run_all_screening \
   --dataset-dir data/DEKOIS2 \
   --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
-  --output-dir pharmacophore/results/DEKOIS2 \
+  --output-dir pharmacophore/results \
   --pharmacomatch-command-template "python screen.py --query {query_ligand} --candidate {candidate}" \
   --pharmacomatch-score-json-key score
 
 python -m pharmacophore.run_all_screening \
   --dataset-dir data/BayesBind \
   --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
-  --output-dir pharmacophore/results/BayesBind \
+  --output-dir pharmacophore/results \
   --pharmacomatch-command-template "python screen.py --query {query_ligand} --candidate {candidate}" \
   --pharmacomatch-score-json-key score
 ```
@@ -164,8 +164,8 @@ python -m pharmacophore.run_all_screening \
 The runner writes:
 
 ```text
-pharmacophore/results/all_screening_metrics.csv
-pharmacophore/results/all_screening_scores.csv
+pharmacophore/results/<dataset>/all_screening_metrics.csv
+pharmacophore/results/<dataset>/all_screening_scores.csv
 ```
 
 `all_screening_metrics.csv` contains AUROC, PR-AUC, EF1%, and BEDROC(alpha=20) for every completed method-target run. `all_screening_scores.csv` combines the per-candidate score rows from every completed method-target run.
@@ -261,7 +261,7 @@ Replace `<target>` with the DUD-E target name or override paths from the command
 
 ## Outputs
 
-Each run writes:
+Single-pipeline runs write:
 
 ```text
 pharmacophore/results/<pipeline>/<target>/
@@ -273,6 +273,33 @@ pharmacophore/results/<pipeline>/<target>/
   cosine_similarity_boxplot.png
   roc_curve_actives_vs_decoys.png       # EquiPharm-family pipelines
   <pipeline>_<target>_auroc_curve.png   # EquiPharm, EquiPharm_Hungarian, EquiPharm_Sinkhorn
+```
+
+All-method dataset runs write:
+
+```text
+pharmacophore/results/<dataset>/
+  all_screening_metrics.csv
+  all_screening_scores.csv
+  <pipeline>/
+    <target>/
+      scores.csv
+      ranked_hits.csv
+      metrics.json
+      screening_performance_summary.csv
+      auroc_curve_coordinates.csv
+      cosine_similarity_boxplot.png
+      roc_curve_actives_vs_decoys.png       # EquiPharm-family pipelines
+      <pipeline>_<target>_auroc_curve.png   # EquiPharm, EquiPharm_Hungarian, EquiPharm_Sinkhorn
+```
+
+Examples:
+
+```text
+pharmacophore/results/DUD-E/all_screening_metrics.csv
+pharmacophore/results/LIT-PCBA/all_screening_metrics.csv
+pharmacophore/results/DEKOIS2/all_screening_metrics.csv
+pharmacophore/results/BayesBind/all_screening_metrics.csv
 ```
 
 `metrics.json` and `screening_performance_summary.csv` include AUROC, PR-AUC, EF1%, and BEDROC(alpha=20), plus the pipeline name and protein target name.

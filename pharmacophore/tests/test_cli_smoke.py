@@ -30,6 +30,7 @@ from pharmacophore.CDPKit import cli as cdpkit_cli
 from pharmacophore.CDPKit import screening as cdpkit_screening
 from pharmacophore.PharmacoMatch import cli as pharmacomatch_cli
 from pharmacophore.PharmacoMatch import screening as pharmacomatch_screening
+from pharmacophore import run_all_screening
 
 
 class PipelineWrapperTests(unittest.TestCase):
@@ -83,6 +84,16 @@ class PipelineWrapperTests(unittest.TestCase):
         self.assertEqual(kwargs["pipeline_name"], "EquiPharm_Sinkhorn")
         self.assertEqual(kwargs["matching_method"], "sinkhorn")
         self.assertEqual(kwargs["model_module"], "benchmarking.Methods.equiformer_encoder_matching")
+
+    def test_all_runner_uses_dataset_specific_output_root(self):
+        self.assertEqual(
+            run_all_screening.resolve_output_root(Path("pharmacophore/results"), "DUD-E"),
+            Path("pharmacophore/results/DUD-E"),
+        )
+        self.assertEqual(
+            run_all_screening.resolve_output_root(Path("pharmacophore/results/DUD-E"), "DUD-E"),
+            Path("pharmacophore/results/DUD-E"),
+        )
 
     def test_equiformer_wrapper_sets_expected_defaults(self):
         with patch.object(equiformer_screening, "screen_actives_decoys") as run:
