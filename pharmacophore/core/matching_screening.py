@@ -80,8 +80,6 @@ def score_candidate_features(
     candidate_encoding: dict,
     method: str,
     mismatch_penalty: float,
-    sinkhorn_temperature: float,
-    sinkhorn_iterations: int,
 ) -> tuple[float, str, tuple[int, int]]:
     query_features = query_encoding["feature_embeddings"]
     candidate_features = candidate_encoding["feature_embeddings"]
@@ -104,8 +102,6 @@ def score_candidate_features(
         candidate_metadata=candidate_encoding.get("feature_metadata"),
         method=method,
         mismatch_penalty=mismatch_penalty,
-        sinkhorn_temperature=sinkhorn_temperature,
-        sinkhorn_iterations=sinkhorn_iterations,
     )
     return score, method, (int(similarity.size(0)), int(similarity.size(1)))
 
@@ -131,8 +127,6 @@ def screen_actives_decoys_matching(
     exclude_rings: bool = True,
     one_per_bond: bool = False,
     mismatch_penalty: float = 0.5,
-    sinkhorn_temperature: float = 0.1,
-    sinkhorn_iterations: int = 50,
     limit: int | None = None,
 ) -> dict:
     device_obj = torch.device(device)
@@ -178,8 +172,6 @@ def screen_actives_decoys_matching(
                     candidate_encoding=candidate_encoding,
                     method=matching_method,
                     mismatch_penalty=mismatch_penalty,
-                    sinkhorn_temperature=sinkhorn_temperature,
-                    sinkhorn_iterations=sinkhorn_iterations,
                 )
                 return score, score_source, matrix_shape
 

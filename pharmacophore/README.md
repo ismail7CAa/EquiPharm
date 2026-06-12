@@ -37,21 +37,17 @@ python -m pharmacophore.EquiPharm.cli \
   --config pharmacophore/EquiPharm/configs/target.example.json
 ```
 
-### EquiPharm Matching Variants
+### EquiPharm Hungarian Matching
 
-Folders:
+Folder:
 
 ```text
 pharmacophore/EquiPharm_Hungarian/
-pharmacophore/EquiPharm_Sinkhorn/
 ```
 
-These are copies of EquiPharm that keep the extracted RDKit pharmacophore features as a feature set instead of immediately averaging them into one global vector. For each query-candidate pair, the screening layer builds a query-feature by candidate-feature cosine similarity matrix.
+This is a copy of EquiPharm that keeps the extracted RDKit pharmacophore features as a feature set instead of immediately averaging them into one global vector. For each query-candidate pair, the screening layer builds a query-feature by candidate-feature cosine similarity matrix.
 
-- `EquiPharm_Hungarian` uses hard one-to-one Hungarian assignment.
-- `EquiPharm_Sinkhorn` uses soft optimal-transport matching.
-
-Both matching pipelines use the same shared encoder module, `benchmarking.Methods.equiformer_encoder_matching`; the only difference is the matching method selected in the screening wrapper.
+`EquiPharm_Hungarian` uses hard one-to-one Hungarian assignment through the shared encoder module `benchmarking.Methods.equiformer_encoder_matching`.
 
 Run Hungarian matching:
 
@@ -63,21 +59,10 @@ python -m pharmacophore.EquiPharm_Hungarian.cli \
   --output-dir pharmacophore/results/EquiPharm_Hungarian/<target>
 ```
 
-Run Sinkhorn matching:
-
-```bash
-python -m pharmacophore.EquiPharm_Sinkhorn.cli \
-  --target-dir data/DUD-E/<target> \
-  --target-name <target> \
-  --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
-  --output-dir pharmacophore/results/EquiPharm_Sinkhorn/<target>
-```
-
-Both matching variants write named AUROC plots such as:
+The Hungarian variant writes named AUROC plots such as:
 
 ```text
 pharmacophore/results/EquiPharm_Hungarian/<target>/EquiPharm_Hungarian_<target>_auroc_curve.png
-pharmacophore/results/EquiPharm_Sinkhorn/<target>/EquiPharm_Sinkhorn_<target>_auroc_curve.png
 ```
 
 ### Optional External Baselines
@@ -109,7 +94,6 @@ CDPKit
 PharmacoMatch
 EquiPharm
 EquiPharm_Hungarian
-EquiPharm_Sinkhorn
 ```
 
 Example for one target smoke run:
@@ -253,7 +237,6 @@ Each pipeline has an example target config:
 ```text
 pharmacophore/EquiPharm/configs/target.example.json
 pharmacophore/EquiPharm_Hungarian/configs/target.example.json
-pharmacophore/EquiPharm_Sinkhorn/configs/target.example.json
 pharmacophore/Equiformer_with_optimization/configs/target.example.json
 ```
 
@@ -272,7 +255,7 @@ pharmacophore/results/<pipeline>/<target>/
   auroc_curve_coordinates.csv
   cosine_similarity_boxplot.png
   roc_curve_actives_vs_decoys.png       # EquiPharm-family pipelines
-  <pipeline>_<target>_auroc_curve.png   # EquiPharm, EquiPharm_Hungarian, EquiPharm_Sinkhorn
+  <pipeline>_<target>_auroc_curve.png   # EquiPharm, EquiPharm_Hungarian
 ```
 
 All-method dataset runs write:
@@ -290,7 +273,7 @@ pharmacophore/results/<dataset>/
       auroc_curve_coordinates.csv
       cosine_similarity_boxplot.png
       roc_curve_actives_vs_decoys.png       # EquiPharm-family pipelines
-      <pipeline>_<target>_auroc_curve.png   # EquiPharm, EquiPharm_Hungarian, EquiPharm_Sinkhorn
+      <pipeline>_<target>_auroc_curve.png   # EquiPharm, EquiPharm_Hungarian
 ```
 
 Examples:

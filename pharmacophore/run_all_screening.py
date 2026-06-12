@@ -13,14 +13,12 @@ try:
     from .CDPKit.screening import run_cdpkit_screening
     from .EquiPharm.screening import run_equipharm_screening
     from .EquiPharm_Hungarian.screening import run_equipharm_hungarian_screening
-    from .EquiPharm_Sinkhorn.screening import run_equipharm_sinkhorn_screening
     from .PharmacoMatch.screening import run_pharmacomatch_screening
     from .core.external_baselines import discover_dude_targets, find_cdpkit_query, find_query_ligand, write_dataset_summary
 except ImportError:
     from pharmacophore.CDPKit.screening import run_cdpkit_screening
     from pharmacophore.EquiPharm.screening import run_equipharm_screening
     from pharmacophore.EquiPharm_Hungarian.screening import run_equipharm_hungarian_screening
-    from pharmacophore.EquiPharm_Sinkhorn.screening import run_equipharm_sinkhorn_screening
     from pharmacophore.PharmacoMatch.screening import run_pharmacomatch_screening
     from pharmacophore.core.external_baselines import discover_dude_targets, find_cdpkit_query, find_query_ligand, write_dataset_summary
 
@@ -30,7 +28,6 @@ MODEL_PIPELINES = (
     "PharmacoMatch",
     "EquiPharm",
     "EquiPharm_Hungarian",
-    "EquiPharm_Sinkhorn",
 )
 
 
@@ -47,8 +44,6 @@ def parse_args():
     parser.add_argument("--maxiter", type=int, default=3)
     parser.add_argument("--popsize", type=int, default=2)
     parser.add_argument("--mismatch-penalty", type=float, default=0.5)
-    parser.add_argument("--sinkhorn-temperature", type=float, default=0.1)
-    parser.add_argument("--sinkhorn-iterations", type=int, default=50)
     parser.add_argument("--cdpkit-query-dir", type=Path)
     parser.add_argument("--psdcreate-bin", default="psdcreate")
     parser.add_argument("--psdscreen-bin", default="psdscreen")
@@ -177,13 +172,6 @@ def run_one_pipeline(args, pipeline: str, target_dir: Path, output_root: Path) -
     if pipeline == "EquiPharm_Hungarian":
         return run_equipharm_hungarian_screening(
             mismatch_penalty=args.mismatch_penalty,
-            **model_kwargs,
-        )
-    if pipeline == "EquiPharm_Sinkhorn":
-        return run_equipharm_sinkhorn_screening(
-            mismatch_penalty=args.mismatch_penalty,
-            sinkhorn_temperature=args.sinkhorn_temperature,
-            sinkhorn_iterations=args.sinkhorn_iterations,
             **model_kwargs,
         )
     raise ValueError(f"Unknown pipeline: {pipeline}")

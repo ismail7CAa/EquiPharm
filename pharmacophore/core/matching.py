@@ -63,36 +63,6 @@ def hungarian_matching_score(similarity: torch.Tensor) -> float:
     return total / max(n_query, n_candidate)
 
 
-def sinkhorn_matching_score(
-    similarity: torch.Tensor,
-    *,
-    temperature: float = 0.1,
-    iterations: int = 50,
-) -> float:
-    """Return a soft optimal-transport matching score from a similarity matrix."""
-    if similarity.numel() == 0:
-        return 0.0
-
-    n_query, n_candidate = similarity.shape
-    if n_query == 0 or n_candidate == 0:
-        return 0.0
-    if temperature <= 0:
-        raise ValueError("temperature must be positive.")
-
-    transport = torch.exp(similarity / temperature)
-    transport = transport.clamp_min(torch.finfo(transport.dtype).tiny)
-
-    query_mass = similarity.new_full((n_query,), 1.0 / n_query)
-    candidate_mass = similarity.new_full((n_candidate,), 1.0 / n_candidate)
-
-    for _ in range(iterations):
-        transport = transport * (query_mass / transport.sum(dim=1).clamp_min(1e-12)).unsqueeze(1)
-        transport = transport * (candidate_mass / transport.sum(dim=0).clamp_min(1e-12)).unsqueeze(0)
-
-    matched_similarity = (transport * similarity).sum()
-    return float(matched_similarity.detach().cpu().item())
-
-
 def matching_score(
     query_features: torch.Tensor,
     candidate_features: torch.Tensor,
@@ -101,8 +71,6 @@ def matching_score(
     candidate_metadata: list[dict] | None = None,
     method: str,
     mismatch_penalty: float = 0.5,
-    sinkhorn_temperature: float = 0.1,
-    sinkhorn_iterations: int = 50,
 ) -> tuple[float, torch.Tensor]:
     """Build the similarity matrix and return a score for the selected method."""
     similarity = cosine_similarity_matrix(query_features, candidate_features)
@@ -114,17 +82,10 @@ def matching_score(
             mismatch_penalty=mismatch_penalty,
         )
 
-    if method == "hungarian":
-        score = hungarian_matching_score(similarity)
-    elif method == "sinkhorn":
-        score = sinkhorn_matching_score(
-            similarity,
-            temperature=sinkhorn_temperature,
-            iterations=sinkhorn_iterations,
-        )
-    else:
+    if method != "hungarian":
         raise ValueError(f"Unknown matching method: {method}")
 
+    score = hungarian_matching_score(similarity)
     return score, similarity
 
 

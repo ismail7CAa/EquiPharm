@@ -13,12 +13,11 @@ from pharmacophore.core.metrics import bedroc, enrichment_factor, write_outputs
 
 try:
     import torch
-    from pharmacophore.core.matching import hungarian_matching_score, matching_score, sinkhorn_matching_score
+    from pharmacophore.core.matching import hungarian_matching_score, matching_score
 except ModuleNotFoundError:
     torch = None
     hungarian_matching_score = None
     matching_score = None
-    sinkhorn_matching_score = None
 
 
 class ScreeningMetricsTests(unittest.TestCase):
@@ -77,15 +76,6 @@ class ScreeningMetricsTests(unittest.TestCase):
         )
 
         self.assertAlmostEqual(hungarian_matching_score(similarity), 0.8, places=6)
-
-    def test_sinkhorn_matching_returns_soft_score(self):
-        if torch is None:
-            self.skipTest("torch is not installed")
-        similarity = torch.eye(3, dtype=torch.float32)
-        score = sinkhorn_matching_score(similarity, temperature=0.1, iterations=20)
-
-        self.assertGreater(score, 0.0)
-        self.assertLessEqual(score, 1.0)
 
     def test_matching_score_penalizes_feature_family_mismatch(self):
         if torch is None:
