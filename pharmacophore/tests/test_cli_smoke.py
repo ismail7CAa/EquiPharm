@@ -26,6 +26,8 @@ from pharmacophore.Equiformer_with_optimization import cli as equiformer_cli
 from pharmacophore.Equiformer_with_optimization import screening as equiformer_screening
 from pharmacophore.CDPKit import cli as cdpkit_cli
 from pharmacophore.CDPKit import screening as cdpkit_screening
+from pharmacophore.Pharmit import cli as pharmit_cli
+from pharmacophore.Pharmit import screening as pharmit_screening
 from pharmacophore.PharmacoMatch import cli as pharmacomatch_cli
 from pharmacophore.PharmacoMatch import screening as pharmacomatch_screening
 from pharmacophore import run_all_screening
@@ -165,6 +167,22 @@ class PipelineWrapperTests(unittest.TestCase):
         self.assertEqual(rows[0]["pipeline"], "PharmacoMatch")
         self.assertEqual(rows[0]["score"], 0.75)
 
+    def test_command_template_baseline_wrapper_sets_pipeline_name(self):
+        with patch.object(pharmit_screening, "run_command_baseline_screening") as run:
+            run.return_value = {"roc_auc": 1.0}
+            result = pharmit_screening.run_pharmit_screening(
+                command_template="pharmit --query {query_ligand} --candidate {candidate}",
+                score_json_key="score",
+                query_ligand="query.mol2",
+                actives_dir="actives_sdf",
+                decoys_dir="decoys_sdf",
+                output_dir="pharmacophore/results/Pharmit/aces",
+                target_name="aces",
+            )
+
+        self.assertEqual(result, {"roc_auc": 1.0})
+        self.assertEqual(run.call_args.kwargs["pipeline_name"], "Pharmit")
+
     def test_pharmacomatch_dataset_wrapper_writes_summary(self):
         targets = [Path("data/DUD-E/aces"), Path("data/DUD-E/egfr")]
         with (
@@ -287,7 +305,33 @@ class CliConfigTests(unittest.TestCase):
         kwargs = run.call_args.kwargs
         self.assertEqual(kwargs["target_name"], "aces")
         self.assertEqual(kwargs["limit"], 5)
-        self.assertEqual(kwargs["output_dir"], "pharmacophore/results/CDPKit/aces")
+
+    def test_command_template_cli_reads_config_without_running_external_tool(self):
+        config = {
+            "command_template": "pharmit --query {query_ligand} --candidate {candidate}",
+            "score_json_key": "score",
+            "query_ligand": "data/DUD-E/aces/crystal_ligand.mol2",
+            "actives_dir": "data/DUD-E/aces/actives_sdf",
+            "decoys_dir": "data/DUD-E/aces/decoys_sdf",
+            "output_dir": "pharmacophore/results/Pharmit/aces",
+            "target_name": "aces",
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "target.json"
+            config_path.write_text(json.dumps(config), encoding="utf-8")
+            argv = ["cli", "--config", str(config_path), "--limit", "5"]
+            with (
+                patch.object(sys, "argv", argv),
+                patch.object(sys, "stdout", StringIO()),
+                patch.object(pharmit_cli, "run_pharmit_screening") as run,
+            ):
+                run.return_value = {"pipeline": "Pharmit", "target": "aces"}
+                pharmit_cli.main()
+
+        kwargs = run.call_args.kwargs
+        self.assertEqual(kwargs["target_name"], "aces")
+        self.assertEqual(kwargs["limit"], 5)
+        self.assertEqual(kwargs["output_dir"], "pharmacophore/results/Pharmit/aces")
 
     def test_cdpkit_cli_reads_dataset_config_without_running_external_tools(self):
         config = {

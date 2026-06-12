@@ -11,24 +11,65 @@ import pandas as pd
 
 try:
     from .CDPKit.screening import run_cdpkit_screening
+    from .DiscoveryStudio.screening import run_discovery_studio_screening
     from .EquiPharm.screening import run_equipharm_screening
     from .EquiPharm_Hungarian.screening import run_equipharm_hungarian_screening
+    from .OpenPharmaco.screening import run_openpharmaco_screening
     from .PharmacoMatch.screening import run_pharmacomatch_screening
+    from .Pharmit.screening import run_pharmit_screening
+    from .SchrodingerPhase.screening import run_schrodinger_phase_screening
     from .core.external_baselines import discover_dude_targets, find_cdpkit_query, find_query_ligand, write_dataset_summary
 except ImportError:
     from pharmacophore.CDPKit.screening import run_cdpkit_screening
+    from pharmacophore.DiscoveryStudio.screening import run_discovery_studio_screening
     from pharmacophore.EquiPharm.screening import run_equipharm_screening
     from pharmacophore.EquiPharm_Hungarian.screening import run_equipharm_hungarian_screening
+    from pharmacophore.OpenPharmaco.screening import run_openpharmaco_screening
     from pharmacophore.PharmacoMatch.screening import run_pharmacomatch_screening
+    from pharmacophore.Pharmit.screening import run_pharmit_screening
+    from pharmacophore.SchrodingerPhase.screening import run_schrodinger_phase_screening
     from pharmacophore.core.external_baselines import discover_dude_targets, find_cdpkit_query, find_query_ligand, write_dataset_summary
 
 
 MODEL_PIPELINES = (
     "CDPKit",
     "PharmacoMatch",
+    "SchrodingerPhase",
+    "OpenPharmaco",
+    "Pharmit",
+    "DiscoveryStudio",
     "EquiPharm",
     "EquiPharm_Hungarian",
 )
+
+
+COMMAND_BASELINES = {
+    "PharmacoMatch": {
+        "runner": run_pharmacomatch_screening,
+        "arg_prefix": "pharmacomatch",
+        "label": "PharmacoMatch",
+    },
+    "SchrodingerPhase": {
+        "runner": run_schrodinger_phase_screening,
+        "arg_prefix": "phase",
+        "label": "SchrodingerPhase",
+    },
+    "OpenPharmaco": {
+        "runner": run_openpharmaco_screening,
+        "arg_prefix": "openpharmaco",
+        "label": "OpenPharmaco",
+    },
+    "Pharmit": {
+        "runner": run_pharmit_screening,
+        "arg_prefix": "pharmit",
+        "label": "Pharmit",
+    },
+    "DiscoveryStudio": {
+        "runner": run_discovery_studio_screening,
+        "arg_prefix": "discoverystudio",
+        "label": "DiscoveryStudio",
+    },
+}
 
 
 def parse_args():
@@ -50,7 +91,18 @@ def parse_args():
     parser.add_argument("--pharmacomatch-score-regex")
     parser.add_argument("--pharmacomatch-score-json-key")
     parser.add_argument("--pharmacomatch-work-dir", type=Path)
+    add_command_baseline_args(parser, "phase")
+    add_command_baseline_args(parser, "openpharmaco")
+    add_command_baseline_args(parser, "pharmit")
+    add_command_baseline_args(parser, "discoverystudio")
     return parser.parse_args()
+
+
+def add_command_baseline_args(parser, prefix: str) -> None:
+    parser.add_argument(f"--{prefix}-command-template")
+    parser.add_argument(f"--{prefix}-score-regex")
+    parser.add_argument(f"--{prefix}-score-json-key")
+    parser.add_argument(f"--{prefix}-work-dir", type=Path)
 
 
 def main() -> None:
@@ -143,16 +195,19 @@ def run_one_pipeline(args, pipeline: str, target_dir: Path, output_root: Path) -
             **common_dirs,
         )
 
-    if pipeline == "PharmacoMatch":
-        if not args.pharmacomatch_command_template:
-            raise ValueError("Provide --pharmacomatch-command-template to run PharmacoMatch.")
-        return run_pharmacomatch_screening(
-            command_template=args.pharmacomatch_command_template,
+    if pipeline in COMMAND_BASELINES:
+        baseline = COMMAND_BASELINES[pipeline]
+        prefix = baseline["arg_prefix"]
+        command_template = getattr(args, f"{prefix}_command_template")
+        if not command_template:
+            raise ValueError(f"Provide --{prefix}-command-template to run {baseline['label']}.")
+        return baseline["runner"](
+            command_template=command_template,
             query_ligand=require_query_ligand(target_dir),
             output_dir=output_root / pipeline / target_name,
-            score_regex=args.pharmacomatch_score_regex,
-            score_json_key=args.pharmacomatch_score_json_key,
-            work_dir=args.pharmacomatch_work_dir,
+            score_regex=getattr(args, f"{prefix}_score_regex"),
+            score_json_key=getattr(args, f"{prefix}_score_json_key"),
+            work_dir=getattr(args, f"{prefix}_work_dir"),
             **common_dirs,
         )
 

@@ -68,10 +68,14 @@ pharmacophore/results/EquiPharm_Hungarian/<target>/EquiPharm_Hungarian_<target>_
 
 ### Optional External Baselines
 
-Two external baselines are scaffolded but kept isolated from the main EquiPharm code path:
+External baselines are scaffolded but kept isolated from the main EquiPharm code path:
 
 - `pharmacophore/CDPKit/` wraps CDPKit `psdcreate`/`psdscreen` for pharmacophore database screening.
 - `pharmacophore/PharmacoMatch/` wraps a configurable PharmacoMatch command and parses a score from JSON or text output.
+- `pharmacophore/SchrodingerPhase/` wraps a local Schrodinger Phase screening command.
+- `pharmacophore/OpenPharmaco/` wraps a local OpenPharmaco-style screening command.
+- `pharmacophore/Pharmit/` wraps a local Pharmit screening command or API script.
+- `pharmacophore/DiscoveryStudio/` wraps a local Discovery Studio pharmacophore screening command.
 
 These adapters are ready to configure, but they do not run unless their CLIs are called explicitly:
 
@@ -81,9 +85,21 @@ python -m pharmacophore.CDPKit.cli \
 
 python -m pharmacophore.PharmacoMatch.cli \
   --config pharmacophore/PharmacoMatch/configs/target.example.json
+
+python -m pharmacophore.SchrodingerPhase.cli \
+  --config pharmacophore/SchrodingerPhase/configs/target.example.json
+
+python -m pharmacophore.OpenPharmaco.cli \
+  --config pharmacophore/OpenPharmaco/configs/target.example.json
+
+python -m pharmacophore.Pharmit.cli \
+  --config pharmacophore/Pharmit/configs/target.example.json
+
+python -m pharmacophore.DiscoveryStudio.cli \
+  --config pharmacophore/DiscoveryStudio/configs/target.example.json
 ```
 
-Both adapters write the same result files as the maintained pipelines under `pharmacophore/results/<pipeline>/<target>/`.
+These adapters write the same result files as the maintained pipelines under `pharmacophore/results/<pipeline>/<target>/`.
 For full datasets, pass `--dataset-dir data/DUD-E` and the adapters also write `pharmacophore/results/<pipeline>/dataset_metrics.csv`.
 
 ### Run All Screening Methods
@@ -93,6 +109,10 @@ Use the all-method runner to execute:
 ```text
 CDPKit
 PharmacoMatch
+SchrodingerPhase
+OpenPharmaco
+Pharmit
+DiscoveryStudio
 EquiPharm
 EquiPharm_Hungarian
 ```
@@ -107,6 +127,14 @@ python -m pharmacophore.run_all_screening \
   --output-dir pharmacophore/results \
   --pharmacomatch-command-template "python screen.py --query {query_ligand} --candidate {candidate}" \
   --pharmacomatch-score-json-key score \
+  --phase-command-template "phase_screen --query {query_ligand} --candidate {candidate} --json" \
+  --phase-score-json-key score \
+  --openpharmaco-command-template "openpharmaco_screen --query {query_ligand} --candidate {candidate}" \
+  --openpharmaco-score-regex "score[:=]\\s*([-+0-9.eE]+)" \
+  --pharmit-command-template "pharmit_screen --query {query_ligand} --candidate {candidate} --json" \
+  --pharmit-score-json-key score \
+  --discoverystudio-command-template "discovery_studio_pharmacophore_screen --query {query_ligand} --candidate {candidate} --json" \
+  --discoverystudio-score-json-key score \
   --limit 100
 ```
 
@@ -122,6 +150,8 @@ python -m pharmacophore.run_all_screening \
 ```
 
 The same command works for the normalized LIT-PCBA, DEKOIS2, and BayesBind roots:
+
+Include the same `--phase-*`, `--openpharmaco-*`, `--pharmit-*`, and `--discoverystudio-*` command-template options when you want those external baselines included for the dataset.
 
 ```bash
 python -m pharmacophore.run_all_screening \
@@ -239,6 +269,10 @@ Each pipeline has an example target config:
 pharmacophore/EquiPharm/configs/target.example.json
 pharmacophore/EquiPharm_Hungarian/configs/target.example.json
 pharmacophore/Equiformer_with_optimization/configs/target.example.json
+pharmacophore/SchrodingerPhase/configs/target.example.json
+pharmacophore/OpenPharmaco/configs/target.example.json
+pharmacophore/Pharmit/configs/target.example.json
+pharmacophore/DiscoveryStudio/configs/target.example.json
 ```
 
 Replace `<target>` with the DUD-E target name or override paths from the command line.

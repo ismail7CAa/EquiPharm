@@ -78,7 +78,7 @@ The pharmacophore pipeline applies the selected 3D representation approach to vi
 - `EquiPharm`: an Equiformer-based workflow that attaches RDKit pharmacophore features to molecular graphs before encoding.
 - `EquiPharm_Hungarian`: a copy of EquiPharm that scores feature-level query/candidate similarity matrices with Hungarian matching.
 - `Equiformer_with_optimization`: a baseline Equiformer screening workflow with the same torsion optimization and active/decoy evaluation flow, but without explicit pharmacophore feature attachment.
-- `CDPKit` and `PharmacoMatch`: optional external baseline adapters.
+- `CDPKit`, `PharmacoMatch`, `SchrodingerPhase`, `OpenPharmaco`, `Pharmit`, and `DiscoveryStudio`: optional external baseline adapters.
 
 The Hungarian variant uses `benchmarking.Methods.equiformer_encoder_matching` to expose feature-level pharmacophore embeddings before assignment scoring. Its cost matrix allows same-family pharmacophore matches, such as donor-to-donor or aromatic-to-aromatic, and sets incompatible pairs to `Inf`.
 
@@ -96,6 +96,10 @@ pharmacophore/
   EquiPharm_Hungarian/             # Feature-level Hungarian matching pipeline
   CDPKit/                          # CDPKit external baseline adapter
   PharmacoMatch/                   # PharmacoMatch command-template adapter
+  SchrodingerPhase/                # Schrodinger Phase command-template adapter
+  OpenPharmaco/                    # OpenPharmaco command-template adapter
+  Pharmit/                         # Pharmit command-template adapter
+  DiscoveryStudio/                 # Discovery Studio command-template adapter
   Equiformer_with_optimization/    # Equiformer screening baseline with torsion optimization
   core/                            # Shared molecule IO, screening, metrics, and torsion utilities
   legacy/                          # Original exploratory scripts preserved for traceability
@@ -342,7 +346,7 @@ python -m pharmacophore.EquiPharm_Hungarian.cli \
   --output-dir pharmacophore/results/EquiPharm_Hungarian/<target>
 ```
 
-Run CDPKit, PharmacoMatch, EquiPharm, and EquiPharm_Hungarian together and aggregate their CSV tables:
+Run CDPKit, PharmacoMatch, SchrodingerPhase, OpenPharmaco, Pharmit, DiscoveryStudio, EquiPharm, and EquiPharm_Hungarian together and aggregate their CSV tables:
 
 ```bash
 python -m pharmacophore.run_all_screening \
@@ -350,10 +354,20 @@ python -m pharmacophore.run_all_screening \
   --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
   --output-dir pharmacophore/results \
   --pharmacomatch-command-template "python screen.py --query {query_ligand} --candidate {candidate}" \
-  --pharmacomatch-score-json-key score
+  --pharmacomatch-score-json-key score \
+  --phase-command-template "phase_screen --query {query_ligand} --candidate {candidate} --json" \
+  --phase-score-json-key score \
+  --openpharmaco-command-template "openpharmaco_screen --query {query_ligand} --candidate {candidate}" \
+  --openpharmaco-score-regex "score[:=]\\s*([-+0-9.eE]+)" \
+  --pharmit-command-template "pharmit_screen --query {query_ligand} --candidate {candidate} --json" \
+  --pharmit-score-json-key score \
+  --discoverystudio-command-template "discovery_studio_pharmacophore_screen --query {query_ligand} --candidate {candidate} --json" \
+  --discoverystudio-score-json-key score
 ```
 
 Run the same all-method pipeline on additional normalized datasets by changing `--dataset-dir`:
+
+Include the same `--phase-*`, `--openpharmaco-*`, `--pharmit-*`, and `--discoverystudio-*` command-template options when you want those external baselines included for the dataset.
 
 ```bash
 python -m pharmacophore.run_all_screening \
@@ -389,6 +403,18 @@ python -m pharmacophore.EquiPharm_Hungarian.cli \
 
 python -m pharmacophore.Equiformer_with_optimization.cli \
   --config pharmacophore/Equiformer_with_optimization/configs/target.example.json
+
+python -m pharmacophore.SchrodingerPhase.cli \
+  --config pharmacophore/SchrodingerPhase/configs/target.example.json
+
+python -m pharmacophore.OpenPharmaco.cli \
+  --config pharmacophore/OpenPharmaco/configs/target.example.json
+
+python -m pharmacophore.Pharmit.cli \
+  --config pharmacophore/Pharmit/configs/target.example.json
+
+python -m pharmacophore.DiscoveryStudio.cli \
+  --config pharmacophore/DiscoveryStudio/configs/target.example.json
 ```
 
 ## Outputs

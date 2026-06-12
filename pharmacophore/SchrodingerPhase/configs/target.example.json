@@ -1,0 +1,9 @@
+{
+  "command_template": "phase_screen --query {query_ligand} --candidate {candidate} --output {output_dir}/{candidate_name}.json",
+  "score_json_key": "score",
+  "query_ligand": "data/DUD-E/<target>/crystal_ligand.mol2",
+  "actives_dir": "data/DUD-E/<target>/actives_sdf",
+  "decoys_dir": "data/DUD-E/<target>/decoys_sdf",
+  "output_dir": "pharmacophore/results/SchrodingerPhase/<target>",
+  "target_name": "<target>"
+}

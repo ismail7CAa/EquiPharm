@@ -1,0 +1,9 @@
+{
+  "command_template": "openpharmaco_screen --query {query_ligand} --candidate {candidate}",
+  "score_regex": "score[:=]\\s*([-+0-9.eE]+)",
+  "query_ligand": "data/DUD-E/<target>/crystal_ligand.mol2",
+  "actives_dir": "data/DUD-E/<target>/actives_sdf",
+  "decoys_dir": "data/DUD-E/<target>/decoys_sdf",
+  "output_dir": "pharmacophore/results/OpenPharmaco/<target>",
+  "target_name": "<target>"
+}
