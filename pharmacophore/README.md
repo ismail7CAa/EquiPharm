@@ -288,6 +288,7 @@ pharmacophore/results/BayesBind/all_screening_metrics.csv
 
 `metrics.json` and `screening_performance_summary.csv` include AUROC, PR-AUC, EF1%, and BEDROC(alpha=20), plus the pipeline name and protein target name.
 `auroc_curve_coordinates.csv` stores the false-positive-rate, true-positive-rate, and threshold values used to draw the ROC curve.
+For `EquiPharm_Hungarian`, `scores.csv` also includes `matched_feature_count` and `matching_details`, where `matching_details` is JSON describing the selected query-candidate pharmacophore feature matches and unmatched query features.
 If `--target-name` is omitted, the target is inferred from paths like `data/DUD-E/<target>/...`.
 
 Existing reference plots and CSV exports from the exploratory workflow are kept in:

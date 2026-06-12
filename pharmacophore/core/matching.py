@@ -59,17 +59,17 @@ def hungarian_matching_score(
     *,
     compatibility_mask: torch.Tensor | None = None,
     unmatched_similarity: float = 0.0,
-) -> float:
-    """Return a normalized hard one-to-one pharmacophore matching score."""
+) -> tuple[float, list[tuple[int, int | None]]]:
+    """Return a normalized hard one-to-one pharmacophore matching score and assignments."""
     if similarity.numel() == 0:
-        return 0.0
+        return 0.0, []
 
     similarity_cpu = similarity.detach().cpu()
     if compatibility_mask is not None:
         compatibility_mask = compatibility_mask.detach().cpu().bool()
     n_query, n_candidate = similarity_cpu.shape
     if n_query == 0 or n_candidate == 0:
-        return 0.0
+        return 0.0, []
 
     cost = build_hungarian_cost_matrix(
         similarity_cpu,
@@ -81,11 +81,12 @@ def hungarian_matching_score(
         from scipy.optimize import linear_sum_assignment
 
         row_ind, col_ind = linear_sum_assignment(cost.numpy())
-        total = selected_similarity_sum(similarity_cpu, row_ind, col_ind)
+        assignments = assignment_pairs(row_ind, col_ind, n_candidate)
+        total = selected_similarity_sum(similarity_cpu, assignments)
     except Exception:
-        total = _bruteforce_assignment_sum(similarity_cpu, compatibility_mask=compatibility_mask)
+        total, assignments = _bruteforce_assignment(similarity_cpu, compatibility_mask=compatibility_mask)
 
-    return total / max(n_query, n_candidate)
+    return total / max(n_query, n_candidate), assignments
 
 
 def build_hungarian_cost_matrix(
@@ -112,13 +113,67 @@ def build_hungarian_cost_matrix(
     return torch.cat([cost, dummy_cost], dim=1)
 
 
-def selected_similarity_sum(similarity: torch.Tensor, row_ind, col_ind) -> float:
-    total = 0.0
-    n_candidate = similarity.shape[1]
+def assignment_pairs(row_ind, col_ind, n_candidate: int) -> list[tuple[int, int | None]]:
+    assignments = []
     for row, col in zip(row_ind, col_ind):
-        if int(col) < n_candidate:
+        row_idx = int(row)
+        col_idx = int(col)
+        assignments.append((row_idx, col_idx if col_idx < n_candidate else None))
+    return assignments
+
+
+def selected_similarity_sum(similarity: torch.Tensor, assignments: list[tuple[int, int | None]]) -> float:
+    total = 0.0
+    for row, col in assignments:
+        if col is not None:
             total += float(similarity[int(row), int(col)].item())
     return total
+
+
+def build_match_details(
+    similarity: torch.Tensor,
+    assignments: list[tuple[int, int | None]],
+    query_metadata: list[dict] | None,
+    candidate_metadata: list[dict] | None,
+) -> list[dict]:
+    details = []
+    query_metadata = query_metadata or []
+    candidate_metadata = candidate_metadata or []
+    for query_index, candidate_index in sorted(assignments, key=lambda pair: pair[0]):
+        query_feature = query_metadata[query_index] if query_index < len(query_metadata) else {}
+        if candidate_index is None:
+            details.append(
+                {
+                    "query_index": query_index,
+                    "candidate_index": None,
+                    "query_family": query_feature.get("family"),
+                    "query_type": query_feature.get("type"),
+                    "query_atom_ids": query_feature.get("atom_ids", ()),
+                    "candidate_family": None,
+                    "candidate_type": None,
+                    "candidate_atom_ids": (),
+                    "similarity": 0.0,
+                    "status": "unmatched",
+                }
+            )
+            continue
+
+        candidate_feature = candidate_metadata[candidate_index] if candidate_index < len(candidate_metadata) else {}
+        details.append(
+            {
+                "query_index": query_index,
+                "candidate_index": candidate_index,
+                "query_family": query_feature.get("family"),
+                "query_type": query_feature.get("type"),
+                "query_atom_ids": query_feature.get("atom_ids", ()),
+                "candidate_family": candidate_feature.get("family"),
+                "candidate_type": candidate_feature.get("type"),
+                "candidate_atom_ids": candidate_feature.get("atom_ids", ()),
+                "similarity": float(similarity[query_index, candidate_index].detach().cpu().item()),
+                "status": "matched",
+            }
+        )
+    return details
 
 
 def matching_score(
@@ -129,8 +184,8 @@ def matching_score(
     candidate_metadata: list[dict] | None = None,
     method: str,
     enforce_feature_family: bool = True,
-) -> tuple[float, torch.Tensor]:
-    """Build the similarity matrix and return a score for the selected method."""
+) -> tuple[float, torch.Tensor, list[dict]]:
+    """Build the similarity matrix and return a score plus selected matches."""
     similarity = cosine_similarity_matrix(query_features, candidate_features)
 
     if method != "hungarian":
@@ -140,11 +195,16 @@ def matching_score(
     if enforce_feature_family and query_metadata is not None and candidate_metadata is not None:
         compatibility_mask = feature_family_compatibility_mask(query_metadata, candidate_metadata).to(similarity.device)
 
-    score = hungarian_matching_score(similarity, compatibility_mask=compatibility_mask)
-    return score, similarity
+    score, assignments = hungarian_matching_score(similarity, compatibility_mask=compatibility_mask)
+    match_details = build_match_details(similarity, assignments, query_metadata, candidate_metadata)
+    return score, similarity, match_details
 
 
-def _bruteforce_assignment_sum(matrix: torch.Tensor, *, compatibility_mask: torch.Tensor | None = None) -> float:
+def _bruteforce_assignment(
+    matrix: torch.Tensor,
+    *,
+    compatibility_mask: torch.Tensor | None = None,
+) -> tuple[float, list[tuple[int, int | None]]]:
     """Small fallback for environments without SciPy."""
     n_query, n_candidate = matrix.shape
     if min(n_query, n_candidate) > 8:
@@ -152,19 +212,35 @@ def _bruteforce_assignment_sum(matrix: torch.Tensor, *, compatibility_mask: torc
             matrix = matrix.masked_fill(~compatibility_mask, float("-inf"))
         values, _ = matrix.max(dim=1)
         values = torch.where(torch.isfinite(values), values, torch.zeros_like(values))
-        return float(values.sum().item())
+        cols = []
+        for row in range(n_query):
+            col = int(torch.argmax(matrix[row]).item())
+            if not torch.isfinite(matrix[row, col]):
+                cols.append((row, None))
+            else:
+                cols.append((row, col))
+        return float(values.sum().item()), cols
 
     best = None
+    best_cols = None
     if n_query <= n_candidate:
         col_options = range(n_candidate + n_query)
         for cols in itertools.permutations(col_options, n_query):
             total = _assignment_similarity_sum(matrix, cols, compatibility_mask=compatibility_mask)
-            best = total if best is None else max(best, total)
+            if best is None or total > best:
+                best = total
+                best_cols = cols
     else:
         for cols in itertools.permutations(range(n_candidate + n_query), n_query):
             total = _assignment_similarity_sum(matrix, cols, compatibility_mask=compatibility_mask)
-            best = total if best is None else max(best, total)
-    return float(best or 0.0)
+            if best is None or total > best:
+                best = total
+                best_cols = cols
+    assignments = [
+        (row, col if col < n_candidate else None)
+        for row, col in enumerate(best_cols or [])
+    ]
+    return float(best or 0.0), assignments
 
 
 def _assignment_similarity_sum(

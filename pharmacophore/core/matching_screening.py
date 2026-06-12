@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import torch
@@ -79,7 +80,7 @@ def score_candidate_features(
     query_encoding: dict,
     candidate_encoding: dict,
     method: str,
-) -> tuple[float, str, tuple[int, int]]:
+) -> tuple[float, str, tuple[int, int], list[dict]]:
     query_features = query_encoding["feature_embeddings"]
     candidate_features = candidate_encoding["feature_embeddings"]
 
@@ -92,16 +93,16 @@ def score_candidate_features(
         return float(score.squeeze(0).detach().cpu().item()), "global_fallback", (
             int(query_features.size(0)),
             int(candidate_features.size(0)),
-        )
+        ), []
 
-    score, similarity = matching_score(
+    score, similarity, match_details = matching_score(
         query_features,
         candidate_features,
         query_metadata=query_encoding.get("feature_metadata"),
         candidate_metadata=candidate_encoding.get("feature_metadata"),
         method=method,
     )
-    return score, method, (int(similarity.size(0)), int(similarity.size(1)))
+    return score, method, (int(similarity.size(0)), int(similarity.size(1))), match_details
 
 
 def screen_actives_decoys_matching(
@@ -164,16 +165,16 @@ def screen_actives_decoys_matching(
                     name=mol.GetProp("_Name"),
                     idx=idx,
                 )
-                score, score_source, matrix_shape = score_candidate_features(
+                score, score_source, matrix_shape, match_details = score_candidate_features(
                     query_encoding=query_encoding,
                     candidate_encoding=candidate_encoding,
                     method=matching_method,
                 )
-                return score, score_source, matrix_shape
+                return score, score_source, matrix_shape, match_details
 
             if optimize:
                 def scalar_objective(candidate_mol):
-                    score, _, _ = objective(candidate_mol)
+                    score, _, _, _ = objective(candidate_mol)
                     return score
 
                 optimized_mol, score, opt_meta = optimize_torsions(
@@ -187,9 +188,9 @@ def screen_actives_decoys_matching(
                     one_per_bond=one_per_bond,
                     seed=idx,
                 )
-                _, score_source, matrix_shape = objective(optimized_mol)
+                _, score_source, matrix_shape, match_details = objective(optimized_mol)
             else:
-                score, score_source, matrix_shape = objective(mol)
+                score, score_source, matrix_shape, match_details = objective(mol)
                 opt_meta = {"torsion_count": 0, "theta": []}
 
             rows.append(
@@ -203,6 +204,8 @@ def screen_actives_decoys_matching(
                     "score_source": score_source,
                     "query_feature_count": matrix_shape[0],
                     "candidate_feature_count": matrix_shape[1],
+                    "matched_feature_count": sum(1 for match in match_details if match.get("status") == "matched"),
+                    "matching_details": json.dumps(match_details, sort_keys=True),
                     "torsion_count": opt_meta["torsion_count"],
                 }
             )

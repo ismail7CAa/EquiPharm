@@ -24,3 +24,5 @@ python -m pharmacophore.EquiPharm_Hungarian.cli \
 ```
 
 Each run writes `scores.csv`, `ranked_hits.csv`, `metrics.json`, `screening_performance_summary.csv`, `auroc_curve_coordinates.csv`, and a named AUROC plot such as `EquiPharm_Hungarian_aces_auroc_curve.png`.
+
+For interpretability, `scores.csv` also includes `matched_feature_count` and `matching_details`. The `matching_details` column is JSON with query feature family/type/atom IDs, candidate feature family/type/atom IDs, similarity, and whether each query feature was matched or left unmatched.
