@@ -251,7 +251,7 @@ class CliConfigTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "target.json"
             config_path.write_text(json.dumps(config), encoding="utf-8")
-            argv = ["cli", "--config", str(config_path), "--limit", "5", "--mismatch-penalty", "0.75"]
+            argv = ["cli", "--config", str(config_path), "--limit", "5"]
             with (
                 patch.object(sys, "argv", argv),
                 patch.object(sys, "stdout", StringIO()),
@@ -263,7 +263,6 @@ class CliConfigTests(unittest.TestCase):
         kwargs = run.call_args.kwargs
         self.assertEqual(kwargs["target_name"], "aces")
         self.assertEqual(kwargs["limit"], 5)
-        self.assertEqual(kwargs["mismatch_penalty"], 0.75)
 
     def test_cdpkit_cli_reads_config_without_running_external_tools(self):
         config = {

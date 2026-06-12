@@ -77,13 +77,13 @@ class ScreeningMetricsTests(unittest.TestCase):
 
         self.assertAlmostEqual(hungarian_matching_score(similarity), 0.8, places=6)
 
-    def test_matching_score_penalizes_feature_family_mismatch(self):
+    def test_matching_score_forbids_feature_family_mismatch(self):
         if torch is None:
             self.skipTest("torch is not installed")
-        query = torch.eye(2, dtype=torch.float32)
-        candidate = torch.eye(2, dtype=torch.float32)
-        query_metadata = [{"family": "Donor"}, {"family": "Acceptor"}]
-        candidate_metadata = [{"family": "Acceptor"}, {"family": "Donor"}]
+        query = torch.tensor([[1.0, 0.0], [0.0, 1.0]], dtype=torch.float32)
+        candidate = torch.tensor([[1.0, 0.0], [0.0, 1.0]], dtype=torch.float32)
+        query_metadata = [{"family": "Donor"}, {"family": "Aromatic"}]
+        candidate_metadata = [{"family": "Aromatic"}, {"family": "Donor"}]
 
         score, similarity = matching_score(
             query,
@@ -91,11 +91,10 @@ class ScreeningMetricsTests(unittest.TestCase):
             query_metadata=query_metadata,
             candidate_metadata=candidate_metadata,
             method="hungarian",
-            mismatch_penalty=0.5,
         )
 
         self.assertEqual(tuple(similarity.shape), (2, 2))
-        self.assertLess(score, 1.0)
+        self.assertAlmostEqual(score, 0.0, places=6)
 
 
 if __name__ == "__main__":

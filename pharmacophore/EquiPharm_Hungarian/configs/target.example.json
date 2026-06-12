@@ -12,6 +12,5 @@
   "rotatable_only": false,
   "heavy_only": true,
   "exclude_rings": true,
-  "one_per_bond": false,
-  "mismatch_penalty": 0.5
+  "one_per_bond": false
 }

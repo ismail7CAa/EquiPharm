@@ -48,6 +48,7 @@ pharmacophore/EquiPharm_Hungarian/
 This is a copy of EquiPharm that keeps the extracted RDKit pharmacophore features as a feature set instead of immediately averaging them into one global vector. For each query-candidate pair, the screening layer builds a query-feature by candidate-feature cosine similarity matrix.
 
 `EquiPharm_Hungarian` uses hard one-to-one Hungarian assignment through the shared encoder module `benchmarking.Methods.equiformer_encoder_matching`.
+The matching cost matrix is constrained by pharmacophore family: donor-to-donor, acceptor-to-acceptor, aromatic-to-aromatic, and related same-family matches are allowed, while incompatible pairs are assigned `Inf` and cannot be selected.
 
 Run Hungarian matching:
 

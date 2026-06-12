@@ -2,7 +2,9 @@
 
 EquiPharm Hungarian keeps the RDKit pharmacophore feature extraction from EquiPharm, but scores molecules by hard one-to-one matching between query and candidate pharmacophore feature embeddings.
 
-The encoder returns feature-level embeddings, the screening layer builds a query-feature by candidate-feature cosine similarity matrix, and Hungarian assignment converts that matrix into one candidate score.
+The encoder returns feature-level embeddings, the screening layer builds a query-feature by candidate-feature matrix, and Hungarian assignment converts that matrix into one candidate score.
+
+The assignment is chemically constrained: compatible pharmacophore families such as donor-to-donor, acceptor-to-acceptor, and aromatic-to-aromatic receive cosine-distance costs, while incompatible family pairs are set to `Inf` and cannot be selected. Internal dummy columns let unmatched query features contribute zero instead of forcing an invalid match.
 
 ## Run
 

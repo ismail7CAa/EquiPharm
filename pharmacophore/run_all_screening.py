@@ -43,7 +43,6 @@ def parse_args():
     parser.add_argument("--no-optimize", action="store_true")
     parser.add_argument("--maxiter", type=int, default=3)
     parser.add_argument("--popsize", type=int, default=2)
-    parser.add_argument("--mismatch-penalty", type=float, default=0.5)
     parser.add_argument("--cdpkit-query-dir", type=Path)
     parser.add_argument("--psdcreate-bin", default="psdcreate")
     parser.add_argument("--psdscreen-bin", default="psdscreen")
@@ -170,10 +169,7 @@ def run_one_pipeline(args, pipeline: str, target_dir: Path, output_root: Path) -
     if pipeline == "EquiPharm":
         return run_equipharm_screening(**model_kwargs)
     if pipeline == "EquiPharm_Hungarian":
-        return run_equipharm_hungarian_screening(
-            mismatch_penalty=args.mismatch_penalty,
-            **model_kwargs,
-        )
+        return run_equipharm_hungarian_screening(**model_kwargs)
     raise ValueError(f"Unknown pipeline: {pipeline}")
 
 

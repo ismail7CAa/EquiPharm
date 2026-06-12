@@ -27,7 +27,6 @@ def parse_args():
     parser.add_argument("--no-optimize", action="store_true")
     parser.add_argument("--maxiter", type=int)
     parser.add_argument("--popsize", type=int)
-    parser.add_argument("--mismatch-penalty", type=float)
     parser.add_argument("--limit", type=int)
     return parser.parse_args()
 
@@ -58,7 +57,6 @@ def main() -> None:
         "device": args.device,
         "maxiter": args.maxiter,
         "popsize": args.popsize,
-        "mismatch_penalty": args.mismatch_penalty,
         "limit": args.limit,
     }
     for key, value in overrides.items():
