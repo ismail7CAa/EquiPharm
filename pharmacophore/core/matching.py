@@ -104,8 +104,10 @@ def build_hungarian_cost_matrix(
     n_query, _ = similarity.shape
     cost = 1.0 - similarity
     if compatibility_mask is not None:
+        # Real query-candidate pharmacophore pairs with incompatible families
         cost = cost.masked_fill(~compatibility_mask, float("inf"))
 
+    # Dummy columns are not real feature matches; they let a query feature stay
     dummy_cost = similarity.new_full((n_query, n_query), 1.0 - float(unmatched_similarity))
     return torch.cat([cost, dummy_cost], dim=1)
 
