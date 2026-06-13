@@ -43,12 +43,16 @@ Folder:
 
 ```text
 pharmacophore/EquiPharm_Hungarian/
+pharmacophore/EquiPharm_Hungarian_v2/
 ```
 
 This is a copy of EquiPharm that keeps the extracted RDKit pharmacophore features as a feature set instead of immediately averaging them into one global vector. For each query-candidate pair, the screening layer builds a query-feature by candidate-feature cosine similarity matrix.
 
 `EquiPharm_Hungarian` uses hard one-to-one Hungarian assignment through the shared encoder module `benchmarking.Methods.equiformer_encoder_matching`.
 The matching cost matrix is constrained by pharmacophore family: donor-to-donor, acceptor-to-acceptor, aromatic-to-aromatic, and related same-family matches are allowed, while incompatible pairs are assigned `Inf` and cannot be selected.
+
+`EquiPharm_Hungarian` keeps the strict score, `sum(matches) / max(num_query_features, num_candidate_features)`.
+`EquiPharm_Hungarian_v2` uses the balanced score, `matched_average * query_coverage`, where `matched_average = sum(matches) / num_matched_features` and `query_coverage = num_matched_features / num_query_features`.
 
 Run Hungarian matching:
 
@@ -60,10 +64,21 @@ python -m pharmacophore.EquiPharm_Hungarian.cli \
   --output-dir pharmacophore/results/EquiPharm_Hungarian/<target>
 ```
 
+Run balanced Hungarian matching:
+
+```bash
+python -m pharmacophore.EquiPharm_Hungarian_v2.cli \
+  --target-dir data/DUD-E/<target> \
+  --target-name <target> \
+  --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
+  --output-dir pharmacophore/results/EquiPharm_Hungarian_v2/<target>
+```
+
 The Hungarian variant writes named AUROC plots such as:
 
 ```text
 pharmacophore/results/EquiPharm_Hungarian/<target>/EquiPharm_Hungarian_<target>_auroc_curve.png
+pharmacophore/results/EquiPharm_Hungarian_v2/<target>/EquiPharm_Hungarian_v2_<target>_auroc_curve.png
 ```
 
 ### Optional External Baselines
@@ -115,6 +130,7 @@ Pharmit
 DiscoveryStudio
 EquiPharm
 EquiPharm_Hungarian
+EquiPharm_Hungarian_v2
 ```
 
 Example for one target smoke run:
@@ -268,6 +284,7 @@ Each pipeline has an example target config:
 ```text
 pharmacophore/EquiPharm/configs/target.example.json
 pharmacophore/EquiPharm_Hungarian/configs/target.example.json
+pharmacophore/EquiPharm_Hungarian_v2/configs/target.example.json
 pharmacophore/Equiformer_with_optimization/configs/target.example.json
 pharmacophore/SchrodingerPhase/configs/target.example.json
 pharmacophore/OpenPharmaco/configs/target.example.json
@@ -290,7 +307,7 @@ pharmacophore/results/<pipeline>/<target>/
   auroc_curve_coordinates.csv
   cosine_similarity_boxplot.png
   roc_curve_actives_vs_decoys.png       # EquiPharm-family pipelines
-  <pipeline>_<target>_auroc_curve.png   # EquiPharm, EquiPharm_Hungarian
+  <pipeline>_<target>_auroc_curve.png   # EquiPharm, EquiPharm_Hungarian, EquiPharm_Hungarian_v2
 ```
 
 All-method dataset runs write:
@@ -308,7 +325,7 @@ pharmacophore/results/<dataset>/
       auroc_curve_coordinates.csv
       cosine_similarity_boxplot.png
       roc_curve_actives_vs_decoys.png       # EquiPharm-family pipelines
-      <pipeline>_<target>_auroc_curve.png   # EquiPharm, EquiPharm_Hungarian
+      <pipeline>_<target>_auroc_curve.png   # EquiPharm, EquiPharm_Hungarian, EquiPharm_Hungarian_v2
 ```
 
 Examples:
@@ -322,7 +339,7 @@ pharmacophore/results/BayesBind/all_screening_metrics.csv
 
 `metrics.json` and `screening_performance_summary.csv` include AUROC, PR-AUC, EF1%, and BEDROC(alpha=20), plus the pipeline name and protein target name.
 `auroc_curve_coordinates.csv` stores the false-positive-rate, true-positive-rate, and threshold values used to draw the ROC curve.
-For `EquiPharm_Hungarian`, `scores.csv` also includes `matched_feature_count` and `matching_details`, where `matching_details` is JSON describing the selected query-candidate pharmacophore feature matches and unmatched query features.
+For `EquiPharm_Hungarian` and `EquiPharm_Hungarian_v2`, `scores.csv` also includes `hungarian_score_strict`, `hungarian_score_balanced`, `matched_feature_count`, coverage columns, and `matching_details`, where `matching_details` is JSON describing the selected query-candidate pharmacophore feature matches and unmatched query features.
 If `--target-name` is omitted, the target is inferred from paths like `data/DUD-E/<target>/...`.
 
 Existing reference plots and CSV exports from the exploratory workflow are kept in:

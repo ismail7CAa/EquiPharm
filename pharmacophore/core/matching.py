@@ -19,6 +19,9 @@ PHARMACOPHORE_FAMILY_GROUPS = {
     "ZnBinder": "ZnBinder",
 }
 
+STRICT_SCORE_MODE = "strict"
+BALANCED_SCORE_MODE = "balanced"
+
 
 def cosine_similarity_matrix(query_features: torch.Tensor, candidate_features: torch.Tensor) -> torch.Tensor:
     """Return the query-feature by candidate-feature cosine similarity matrix."""
@@ -59,17 +62,17 @@ def hungarian_matching_score(
     *,
     compatibility_mask: torch.Tensor | None = None,
     unmatched_similarity: float = 0.0,
-) -> tuple[float, list[tuple[int, int | None]]]:
+) -> tuple[float, list[tuple[int, int | None]], dict]:
     """Return a normalized hard one-to-one pharmacophore matching score and assignments."""
     if similarity.numel() == 0:
-        return 0.0, []
+        return 0.0, [], empty_score_components()
 
     similarity_cpu = similarity.detach().cpu()
     if compatibility_mask is not None:
         compatibility_mask = compatibility_mask.detach().cpu().bool()
     n_query, n_candidate = similarity_cpu.shape
     if n_query == 0 or n_candidate == 0:
-        return 0.0, []
+        return 0.0, [], empty_score_components()
 
     cost = build_hungarian_cost_matrix(
         similarity_cpu,
@@ -86,7 +89,51 @@ def hungarian_matching_score(
     except Exception:
         total, assignments = _bruteforce_assignment(similarity_cpu, compatibility_mask=compatibility_mask)
 
-    return total / max(n_query, n_candidate), assignments
+    components = score_components(total, assignments, n_query, n_candidate)
+    return components["strict_score"], assignments, components
+
+
+def score_components(
+    selected_similarity_total: float,
+    assignments: list[tuple[int, int | None]],
+    n_query: int,
+    n_candidate: int,
+) -> dict:
+    matched_count = sum(1 for _, col in assignments if col is not None)
+    matched_average = selected_similarity_total / matched_count if matched_count else 0.0
+    query_coverage = matched_count / n_query if n_query else 0.0
+    candidate_coverage = matched_count / n_candidate if n_candidate else 0.0
+    balanced_score = matched_average * query_coverage
+    strict_score = selected_similarity_total / max(n_query, n_candidate) if max(n_query, n_candidate) else 0.0
+    return {
+        "selected_similarity_total": float(selected_similarity_total),
+        "matched_feature_count": int(matched_count),
+        "matched_average_similarity": float(matched_average),
+        "query_feature_coverage": float(query_coverage),
+        "candidate_feature_coverage": float(candidate_coverage),
+        "balanced_score": float(balanced_score),
+        "strict_score": float(strict_score),
+    }
+
+
+def empty_score_components() -> dict:
+    return {
+        "selected_similarity_total": 0.0,
+        "matched_feature_count": 0,
+        "matched_average_similarity": 0.0,
+        "query_feature_coverage": 0.0,
+        "candidate_feature_coverage": 0.0,
+        "balanced_score": 0.0,
+        "strict_score": 0.0,
+    }
+
+
+def select_score(components: dict, score_mode: str) -> float:
+    if score_mode == STRICT_SCORE_MODE:
+        return float(components["strict_score"])
+    if score_mode == BALANCED_SCORE_MODE:
+        return float(components["balanced_score"])
+    raise ValueError(f"Unknown Hungarian score mode: {score_mode}")
 
 
 def build_hungarian_cost_matrix(
@@ -184,7 +231,8 @@ def matching_score(
     candidate_metadata: list[dict] | None = None,
     method: str,
     enforce_feature_family: bool = True,
-) -> tuple[float, torch.Tensor, list[dict]]:
+    score_mode: str = STRICT_SCORE_MODE,
+) -> tuple[float, torch.Tensor, list[dict], dict]:
     """Build the similarity matrix and return a score plus selected matches."""
     similarity = cosine_similarity_matrix(query_features, candidate_features)
 
@@ -195,9 +243,12 @@ def matching_score(
     if enforce_feature_family and query_metadata is not None and candidate_metadata is not None:
         compatibility_mask = feature_family_compatibility_mask(query_metadata, candidate_metadata).to(similarity.device)
 
-    score, assignments = hungarian_matching_score(similarity, compatibility_mask=compatibility_mask)
+    _, assignments, components = hungarian_matching_score(similarity, compatibility_mask=compatibility_mask)
+    score = select_score(components, score_mode)
     match_details = build_match_details(similarity, assignments, query_metadata, candidate_metadata)
-    return score, similarity, match_details
+    components = dict(components)
+    components["score_mode"] = score_mode
+    return score, similarity, match_details, components
 
 
 def _bruteforce_assignment(

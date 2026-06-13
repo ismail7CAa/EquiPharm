@@ -80,7 +80,8 @@ def score_candidate_features(
     query_encoding: dict,
     candidate_encoding: dict,
     method: str,
-) -> tuple[float, str, tuple[int, int], list[dict]]:
+    score_mode: str,
+) -> tuple[float, str, tuple[int, int], list[dict], dict]:
     query_features = query_encoding["feature_embeddings"]
     candidate_features = candidate_encoding["feature_embeddings"]
 
@@ -90,19 +91,30 @@ def score_candidate_features(
             candidate_encoding["global_embedding"].unsqueeze(0),
             dim=1,
         )
-        return float(score.squeeze(0).detach().cpu().item()), "global_fallback", (
+        fallback_score = float(score.squeeze(0).detach().cpu().item())
+        return fallback_score, "global_fallback", (
             int(query_features.size(0)),
             int(candidate_features.size(0)),
-        ), []
+        ), [], {
+            "score_mode": "global_fallback",
+            "strict_score": fallback_score,
+            "balanced_score": fallback_score,
+            "selected_similarity_total": fallback_score,
+            "matched_feature_count": 0,
+            "matched_average_similarity": 0.0,
+            "query_feature_coverage": 0.0,
+            "candidate_feature_coverage": 0.0,
+        }
 
-    score, similarity, match_details = matching_score(
+    score, similarity, match_details, score_components = matching_score(
         query_features,
         candidate_features,
         query_metadata=query_encoding.get("feature_metadata"),
         candidate_metadata=candidate_encoding.get("feature_metadata"),
         method=method,
+        score_mode=score_mode,
     )
-    return score, method, (int(similarity.size(0)), int(similarity.size(1))), match_details
+    return score, method, (int(similarity.size(0)), int(similarity.size(1))), match_details, score_components
 
 
 def screen_actives_decoys_matching(
@@ -116,6 +128,7 @@ def screen_actives_decoys_matching(
     model_class: str = "EquiformerQM9",
     pipeline_name: str = "EquiPharm_Matching",
     matching_method: str,
+    matching_score_mode: str = "strict",
     target_name: str | None = None,
     device: str = "cuda",
     optimize: bool = True,
@@ -165,16 +178,17 @@ def screen_actives_decoys_matching(
                     name=mol.GetProp("_Name"),
                     idx=idx,
                 )
-                score, score_source, matrix_shape, match_details = score_candidate_features(
+                score, score_source, matrix_shape, match_details, score_components = score_candidate_features(
                     query_encoding=query_encoding,
                     candidate_encoding=candidate_encoding,
                     method=matching_method,
+                    score_mode=matching_score_mode,
                 )
-                return score, score_source, matrix_shape, match_details
+                return score, score_source, matrix_shape, match_details, score_components
 
             if optimize:
                 def scalar_objective(candidate_mol):
-                    score, _, _, _ = objective(candidate_mol)
+                    score, _, _, _, _ = objective(candidate_mol)
                     return score
 
                 optimized_mol, score, opt_meta = optimize_torsions(
@@ -188,9 +202,9 @@ def screen_actives_decoys_matching(
                     one_per_bond=one_per_bond,
                     seed=idx,
                 )
-                _, score_source, matrix_shape, match_details = objective(optimized_mol)
+                _, score_source, matrix_shape, match_details, score_components = objective(optimized_mol)
             else:
-                score, score_source, matrix_shape, match_details = objective(mol)
+                score, score_source, matrix_shape, match_details, score_components = objective(mol)
                 opt_meta = {"torsion_count": 0, "theta": []}
 
             rows.append(
@@ -204,7 +218,17 @@ def screen_actives_decoys_matching(
                     "score_source": score_source,
                     "query_feature_count": matrix_shape[0],
                     "candidate_feature_count": matrix_shape[1],
-                    "matched_feature_count": sum(1 for match in match_details if match.get("status") == "matched"),
+                    "matching_score_mode": score_components.get("score_mode", matching_score_mode),
+                    "hungarian_score_strict": score_components.get("strict_score", score),
+                    "hungarian_score_balanced": score_components.get("balanced_score", score),
+                    "selected_similarity_total": score_components.get("selected_similarity_total", 0.0),
+                    "matched_feature_count": score_components.get(
+                        "matched_feature_count",
+                        sum(1 for match in match_details if match.get("status") == "matched"),
+                    ),
+                    "matched_average_similarity": score_components.get("matched_average_similarity", 0.0),
+                    "query_feature_coverage": score_components.get("query_feature_coverage", 0.0),
+                    "candidate_feature_coverage": score_components.get("candidate_feature_coverage", 0.0),
                     "matching_details": json.dumps(match_details, sort_keys=True),
                     "torsion_count": opt_meta["torsion_count"],
                 }

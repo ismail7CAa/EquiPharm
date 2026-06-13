@@ -75,9 +75,10 @@ class ScreeningMetricsTests(unittest.TestCase):
             dtype=torch.float32,
         )
 
-        score, assignments = hungarian_matching_score(similarity)
+        score, assignments, components = hungarian_matching_score(similarity)
         self.assertAlmostEqual(score, 0.8, places=6)
         self.assertEqual(assignments, [(0, 0), (1, 1)])
+        self.assertAlmostEqual(components["strict_score"], 0.8, places=6)
 
     def test_matching_score_forbids_feature_family_mismatch(self):
         if torch is None:
@@ -87,7 +88,7 @@ class ScreeningMetricsTests(unittest.TestCase):
         query_metadata = [{"family": "Donor"}, {"family": "Aromatic"}]
         candidate_metadata = [{"family": "Aromatic"}, {"family": "Donor"}]
 
-        score, similarity, match_details = matching_score(
+        score, similarity, match_details, components = matching_score(
             query,
             candidate,
             query_metadata=query_metadata,
@@ -97,9 +98,53 @@ class ScreeningMetricsTests(unittest.TestCase):
 
         self.assertEqual(tuple(similarity.shape), (2, 2))
         self.assertAlmostEqual(score, 0.0, places=6)
+        self.assertAlmostEqual(components["balanced_score"], 0.0, places=6)
         self.assertEqual([match["status"] for match in match_details], ["unmatched", "unmatched"])
         self.assertEqual(match_details[0]["query_family"], "Donor")
         self.assertIsNone(match_details[0]["candidate_index"])
+
+    def test_balanced_hungarian_score_uses_matched_average_times_query_coverage(self):
+        if torch is None:
+            self.skipTest("torch is not installed")
+        query = torch.tensor(
+            [
+                [1.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0, 0.0],
+            ],
+            dtype=torch.float32,
+        )
+        candidate = torch.tensor(
+            [
+                [1.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 0.0],
+                [0.0, 0.0, 0.0, 1.0],
+            ],
+            dtype=torch.float32,
+        )
+        query_metadata = [{"family": "Donor"}, {"family": "Acceptor"}]
+        candidate_metadata = [
+            {"family": "Donor"},
+            {"family": "Acceptor"},
+            {"family": "Aromatic"},
+            {"family": "Hydrophobe"},
+        ]
+
+        score, _, match_details, components = matching_score(
+            query,
+            candidate,
+            query_metadata=query_metadata,
+            candidate_metadata=candidate_metadata,
+            method="hungarian",
+            score_mode="balanced",
+        )
+
+        self.assertAlmostEqual(score, 1.0, places=6)
+        self.assertAlmostEqual(components["matched_average_similarity"], 1.0, places=6)
+        self.assertAlmostEqual(components["query_feature_coverage"], 1.0, places=6)
+        self.assertAlmostEqual(components["balanced_score"], 1.0, places=6)
+        self.assertAlmostEqual(components["strict_score"], 0.5, places=6)
+        self.assertEqual([match["status"] for match in match_details], ["matched", "matched"])
 
 
 if __name__ == "__main__":

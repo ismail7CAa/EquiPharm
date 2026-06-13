@@ -22,6 +22,8 @@ from pharmacophore.EquiPharm import cli as equipharm_cli
 from pharmacophore.EquiPharm import screening as equipharm_screening
 from pharmacophore.EquiPharm_Hungarian import cli as hungarian_cli
 from pharmacophore.EquiPharm_Hungarian import screening as hungarian_screening
+from pharmacophore.EquiPharm_Hungarian_v2 import cli as hungarian_v2_cli
+from pharmacophore.EquiPharm_Hungarian_v2 import screening as hungarian_v2_screening
 from pharmacophore.Equiformer_with_optimization import cli as equiformer_cli
 from pharmacophore.Equiformer_with_optimization import screening as equiformer_screening
 from pharmacophore.CDPKit import cli as cdpkit_cli
@@ -66,6 +68,24 @@ class PipelineWrapperTests(unittest.TestCase):
         kwargs = run.call_args.kwargs
         self.assertEqual(kwargs["pipeline_name"], "EquiPharm_Hungarian")
         self.assertEqual(kwargs["matching_method"], "hungarian")
+        self.assertEqual(kwargs["model_module"], "benchmarking.Methods.equiformer_encoder_matching")
+
+    def test_equipharm_hungarian_v2_wrapper_sets_expected_defaults(self):
+        with patch.object(hungarian_v2_screening, "screen_actives_decoys_matching") as run:
+            run.return_value = {"roc_auc": 1.0}
+            result = hungarian_v2_screening.run_equipharm_hungarian_v2_screening(
+                checkpoint_path="checkpoint.pt",
+                query_ligand="query.mol2",
+                actives_dir="actives_sdf",
+                decoys_dir="decoys_sdf",
+                output_dir="pharmacophore/results/EquiPharm_Hungarian_v2/aces",
+            )
+
+        self.assertEqual(result, {"roc_auc": 1.0})
+        kwargs = run.call_args.kwargs
+        self.assertEqual(kwargs["pipeline_name"], "EquiPharm_Hungarian_v2")
+        self.assertEqual(kwargs["matching_method"], "hungarian")
+        self.assertEqual(kwargs["matching_score_mode"], "balanced")
         self.assertEqual(kwargs["model_module"], "benchmarking.Methods.equiformer_encoder_matching")
 
     def test_all_runner_uses_dataset_specific_output_root(self):
@@ -281,6 +301,32 @@ class CliConfigTests(unittest.TestCase):
         kwargs = run.call_args.kwargs
         self.assertEqual(kwargs["target_name"], "aces")
         self.assertEqual(kwargs["limit"], 5)
+
+    def test_equipharm_hungarian_v2_cli_reads_config_without_data_or_checkpoint(self):
+        config = {
+            "checkpoint_path": "checkpoints/equipharm/best_model.pt",
+            "query_ligand": "data/DUD-E/aces/crystal_ligand.mol2",
+            "actives_dir": "data/DUD-E/aces/actives_sdf",
+            "decoys_dir": "data/DUD-E/aces/decoys_sdf",
+            "output_dir": "pharmacophore/results/EquiPharm_Hungarian_v2/aces",
+            "target_name": "aces",
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "target.json"
+            config_path.write_text(json.dumps(config), encoding="utf-8")
+            argv = ["cli", "--config", str(config_path), "--limit", "5"]
+            with (
+                patch.object(sys, "argv", argv),
+                patch.object(sys, "stdout", StringIO()),
+                patch.object(hungarian_v2_cli, "run_equipharm_hungarian_v2_screening") as run,
+            ):
+                run.return_value = {"pipeline": "EquiPharm_Hungarian_v2", "target": "aces"}
+                hungarian_v2_cli.main()
+
+        kwargs = run.call_args.kwargs
+        self.assertEqual(kwargs["target_name"], "aces")
+        self.assertEqual(kwargs["limit"], 5)
+        self.assertEqual(kwargs["output_dir"], "pharmacophore/results/EquiPharm_Hungarian_v2/aces")
 
     def test_cdpkit_cli_reads_config_without_running_external_tools(self):
         config = {

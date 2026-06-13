@@ -77,10 +77,11 @@ The pharmacophore pipeline applies the selected 3D representation approach to vi
 
 - `EquiPharm`: an Equiformer-based workflow that attaches RDKit pharmacophore features to molecular graphs before encoding.
 - `EquiPharm_Hungarian`: a copy of EquiPharm that scores feature-level query/candidate similarity matrices with Hungarian matching.
+- `EquiPharm_Hungarian_v2`: the same Hungarian feature matching, scored with `matched_average * query_coverage`.
 - `Equiformer_with_optimization`: a baseline Equiformer screening workflow with the same torsion optimization and active/decoy evaluation flow, but without explicit pharmacophore feature attachment.
 - `CDPKit`, `PharmacoMatch`, `SchrodingerPhase`, `OpenPharmaco`, `Pharmit`, and `DiscoveryStudio`: optional external baseline adapters.
 
-The Hungarian variant uses `benchmarking.Methods.equiformer_encoder_matching` to expose feature-level pharmacophore embeddings before assignment scoring. Its cost matrix allows same-family pharmacophore matches, such as donor-to-donor or aromatic-to-aromatic, and sets incompatible pairs to `Inf`.
+The Hungarian variants use `benchmarking.Methods.equiformer_encoder_matching` to expose feature-level pharmacophore embeddings before assignment scoring. Their cost matrix allows same-family pharmacophore matches, such as donor-to-donor or aromatic-to-aromatic, and sets incompatible pairs to `Inf`. `EquiPharm_Hungarian` uses the strict score, while `EquiPharm_Hungarian_v2` uses the balanced score.
 
 These workflows use shared utilities for molecule loading, RDKit-to-PyG conversion, torsion optimization, scoring, metric calculation, and plot generation. This keeps the screening logic reproducible while allowing direct comparison between pharmacophore-aware, matching-based, and external screening methods.
 
@@ -94,6 +95,7 @@ benchmarking/
 pharmacophore/
   EquiPharm/                       # Pharmacophore-feature-aware screening pipeline
   EquiPharm_Hungarian/             # Feature-level Hungarian matching pipeline
+  EquiPharm_Hungarian_v2/          # Balanced-score Hungarian matching pipeline
   CDPKit/                          # CDPKit external baseline adapter
   PharmacoMatch/                   # PharmacoMatch command-template adapter
   SchrodingerPhase/                # Schrodinger Phase command-template adapter
@@ -346,7 +348,17 @@ python -m pharmacophore.EquiPharm_Hungarian.cli \
   --output-dir pharmacophore/results/EquiPharm_Hungarian/<target>
 ```
 
-Run CDPKit, PharmacoMatch, SchrodingerPhase, OpenPharmaco, Pharmit, DiscoveryStudio, EquiPharm, and EquiPharm_Hungarian together and aggregate their CSV tables:
+Run the balanced-score Hungarian matching variant:
+
+```bash
+python -m pharmacophore.EquiPharm_Hungarian_v2.cli \
+  --target-dir data/DUD-E/<target> \
+  --target-name <target> \
+  --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
+  --output-dir pharmacophore/results/EquiPharm_Hungarian_v2/<target>
+```
+
+Run CDPKit, PharmacoMatch, SchrodingerPhase, OpenPharmaco, Pharmit, DiscoveryStudio, EquiPharm, EquiPharm_Hungarian, and EquiPharm_Hungarian_v2 together and aggregate their CSV tables:
 
 ```bash
 python -m pharmacophore.run_all_screening \
@@ -401,6 +413,9 @@ python -m pharmacophore.EquiPharm.cli \
 python -m pharmacophore.EquiPharm_Hungarian.cli \
   --config pharmacophore/EquiPharm_Hungarian/configs/target.example.json
 
+python -m pharmacophore.EquiPharm_Hungarian_v2.cli \
+  --config pharmacophore/EquiPharm_Hungarian_v2/configs/target.example.json
+
 python -m pharmacophore.Equiformer_with_optimization.cli \
   --config pharmacophore/Equiformer_with_optimization/configs/target.example.json
 
@@ -430,7 +445,7 @@ pharmacophore/results/<pipeline>/<target>/
   auroc_curve_coordinates.csv
   cosine_similarity_boxplot.png
   roc_curve_actives_vs_decoys.png       # EquiPharm-family pipelines
-  <pipeline>_<target>_auroc_curve.png   # EquiPharm, EquiPharm_Hungarian
+  <pipeline>_<target>_auroc_curve.png   # EquiPharm, EquiPharm_Hungarian, EquiPharm_Hungarian_v2
 ```
 
 The all-method runner also writes:
@@ -447,7 +462,7 @@ pharmacophore/results/<dataset>/
       screening_performance_summary.csv
       auroc_curve_coordinates.csv
       roc_curve_actives_vs_decoys.png       # EquiPharm-family pipelines
-      <pipeline>_<target>_auroc_curve.png   # EquiPharm, EquiPharm_Hungarian
+      <pipeline>_<target>_auroc_curve.png   # EquiPharm, EquiPharm_Hungarian, EquiPharm_Hungarian_v2
 ```
 
 Examples:

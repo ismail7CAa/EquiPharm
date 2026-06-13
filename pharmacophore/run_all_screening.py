@@ -14,6 +14,7 @@ try:
     from .DiscoveryStudio.screening import run_discovery_studio_screening
     from .EquiPharm.screening import run_equipharm_screening
     from .EquiPharm_Hungarian.screening import run_equipharm_hungarian_screening
+    from .EquiPharm_Hungarian_v2.screening import run_equipharm_hungarian_v2_screening
     from .OpenPharmaco.screening import run_openpharmaco_screening
     from .PharmacoMatch.screening import run_pharmacomatch_screening
     from .Pharmit.screening import run_pharmit_screening
@@ -24,6 +25,7 @@ except ImportError:
     from pharmacophore.DiscoveryStudio.screening import run_discovery_studio_screening
     from pharmacophore.EquiPharm.screening import run_equipharm_screening
     from pharmacophore.EquiPharm_Hungarian.screening import run_equipharm_hungarian_screening
+    from pharmacophore.EquiPharm_Hungarian_v2.screening import run_equipharm_hungarian_v2_screening
     from pharmacophore.OpenPharmaco.screening import run_openpharmaco_screening
     from pharmacophore.PharmacoMatch.screening import run_pharmacomatch_screening
     from pharmacophore.Pharmit.screening import run_pharmit_screening
@@ -40,6 +42,7 @@ MODEL_PIPELINES = (
     "DiscoveryStudio",
     "EquiPharm",
     "EquiPharm_Hungarian",
+    "EquiPharm_Hungarian_v2",
 )
 
 
@@ -225,6 +228,8 @@ def run_one_pipeline(args, pipeline: str, target_dir: Path, output_root: Path) -
         return run_equipharm_screening(**model_kwargs)
     if pipeline == "EquiPharm_Hungarian":
         return run_equipharm_hungarian_screening(**model_kwargs)
+    if pipeline == "EquiPharm_Hungarian_v2":
+        return run_equipharm_hungarian_v2_screening(**model_kwargs)
     raise ValueError(f"Unknown pipeline: {pipeline}")
 
 
