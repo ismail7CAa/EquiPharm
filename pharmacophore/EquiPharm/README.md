@@ -67,3 +67,5 @@ python -m unittest pharmacophore.tests.test_cli_smoke
 ```
 
 Each run writes `screening_performance_summary.csv` with AUROC, PR-AUC, EF1%, and BEDROC(alpha=20), plus `auroc_curve_coordinates.csv` for the ROC curve data.
+
+Runs resume automatically from `scores.csv`. If the server interrupts screening, rerun the same command with the same `--output-dir`; paths with finite scores are skipped and missing molecules continue.

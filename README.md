@@ -358,6 +358,18 @@ python -m pharmacophore.EquiPharm_Hungarian_v2.cli \
   --output-dir pharmacophore/results/EquiPharm_Hungarian_v2/<target>
 ```
 
+EquiPharm-family screening runs are resumable. Each completed molecule is appended to `scores.csv` inside the selected `--output-dir`; if the server interrupts the job, rerun the same command and already-scored molecule paths are skipped:
+
+```bash
+python -m pharmacophore.EquiPharm_Hungarian_v2.cli \
+  --target-dir data/DUD-E/<target> \
+  --target-name <target> \
+  --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
+  --output-dir pharmacophore/results/EquiPharm_Hungarian_v2/<target>
+```
+
+To force a fresh run, remove the target output directory or its `scores.csv` first.
+
 Run CDPKit, PharmacoMatch, SchrodingerPhase, OpenPharmaco, Pharmit, DiscoveryStudio, EquiPharm, EquiPharm_Hungarian, and EquiPharm_Hungarian_v2 together and aggregate their CSV tables:
 
 ```bash

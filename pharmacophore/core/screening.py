@@ -21,6 +21,7 @@ try:
         read_sdf_mol,
     )
     from .torsion import optimize_torsions
+    from .resume import append_score_row, load_resume_rows
 except ImportError:
     from pharmacophore.core.metrics import write_outputs
     from pharmacophore.core.molecule_io import (
@@ -31,6 +32,7 @@ except ImportError:
         read_sdf_mol,
     )
     from pharmacophore.core.torsion import optimize_torsions
+    from pharmacophore.core.resume import append_score_row, load_resume_rows
 
 
 def import_model_class(model_module: str, model_class: str):
@@ -174,8 +176,10 @@ def screen_actives_decoys(
     if limit is not None:
         candidates = candidates[:limit]
 
-    rows = []
+    rows, completed_paths = load_resume_rows(output_dir)
     for idx, (sdf_path, label) in enumerate(tqdm(candidates, desc="Screening")):
+        if str(sdf_path) in completed_paths:
+            continue
         tag = "active" if label == 1 else "decoy"
         try:
             mol = read_sdf_mol(sdf_path, sanitize=True, remove_hs=False, require_3d=True)
@@ -210,30 +214,28 @@ def screen_actives_decoys(
                 score = objective(mol)
                 opt_meta = {"torsion_count": 0, "theta": []}
 
-            rows.append(
-                {
-                    "pipeline": pipeline_name,
-                    "target": target_name,
-                    "name": mol.GetProp("_Name"),
-                    "path": str(sdf_path),
-                    "label": label,
-                    "score": score,
-                    "torsion_count": opt_meta["torsion_count"],
-                }
-            )
+            row = {
+                "pipeline": pipeline_name,
+                "target": target_name,
+                "name": mol.GetProp("_Name"),
+                "path": str(sdf_path),
+                "label": label,
+                "score": score,
+                "torsion_count": opt_meta["torsion_count"],
+            }
         except Exception as exc:
-            rows.append(
-                {
-                    "pipeline": pipeline_name,
-                    "target": target_name,
-                    "name": sdf_path.stem,
-                    "path": str(sdf_path),
-                    "label": label,
-                    "score": float("nan"),
-                    "torsion_count": 0,
-                    "error": str(exc),
-                }
-            )
+            row = {
+                "pipeline": pipeline_name,
+                "target": target_name,
+                "name": sdf_path.stem,
+                "path": str(sdf_path),
+                "label": label,
+                "score": float("nan"),
+                "torsion_count": 0,
+                "error": str(exc),
+            }
+        rows.append(row)
+        append_score_row(output_dir, row)
 
     rows = [row for row in rows if row.get("score") == row.get("score")]
     return write_outputs(

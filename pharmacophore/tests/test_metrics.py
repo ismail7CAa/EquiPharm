@@ -10,6 +10,7 @@ import pandas as pd
 from unittest.mock import patch
 
 from pharmacophore.core.metrics import bedroc, enrichment_factor, write_outputs
+from pharmacophore.core.resume import append_score_row, load_resume_rows
 
 try:
     import torch
@@ -63,6 +64,38 @@ class ScreeningMetricsTests(unittest.TestCase):
 
         self.assertGreater(enrichment_factor(strong_scores, labels, fraction=0.25), 1.0)
         self.assertGreater(bedroc(strong_scores, labels), bedroc(weak_scores, labels))
+
+    def test_resume_rows_track_only_completed_finite_scores(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_dir = Path(tmpdir)
+            append_score_row(
+                output_dir,
+                {
+                    "pipeline": "EquiPharm",
+                    "target": "aces",
+                    "name": "active_00000",
+                    "path": "data/DUD-E/aces/actives_sdf/a.sdf",
+                    "label": 1,
+                    "score": 0.8,
+                },
+            )
+            append_score_row(
+                output_dir,
+                {
+                    "pipeline": "EquiPharm",
+                    "target": "aces",
+                    "name": "bad",
+                    "path": "data/DUD-E/aces/decoys_sdf/bad.sdf",
+                    "label": 0,
+                    "score": float("nan"),
+                    "error": "failed",
+                },
+            )
+
+            rows, completed_paths = load_resume_rows(output_dir)
+
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(completed_paths, {"data/DUD-E/aces/actives_sdf/a.sdf"})
 
     def test_hungarian_matching_uses_one_to_one_assignments(self):
         if torch is None:

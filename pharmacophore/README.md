@@ -154,6 +154,10 @@ python -m pharmacophore.run_all_screening \
   --limit 100
 ```
 
+EquiPharm-family target runs resume automatically from `scores.csv`. If a target run is interrupted, rerun the same command with the same `--output-dir`; molecules whose paths already have finite scores in `scores.csv` are skipped, and new rows are appended as they complete.
+
+To force a fresh run, remove the target output directory or its `scores.csv` first.
+
 Example for all DUD-E targets:
 
 ```bash

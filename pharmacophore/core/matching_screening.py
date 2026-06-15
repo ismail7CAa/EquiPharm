@@ -20,6 +20,7 @@ try:
         rdkit_mol_to_pyg_equiformer,
         read_sdf_mol,
     )
+    from .resume import append_score_row, load_resume_rows
     from .screening import import_model_class, infer_target_name
     from .torsion import optimize_torsions
 except ImportError:
@@ -31,6 +32,7 @@ except ImportError:
         rdkit_mol_to_pyg_equiformer,
         read_sdf_mol,
     )
+    from pharmacophore.core.resume import append_score_row, load_resume_rows
     from pharmacophore.core.screening import import_model_class, infer_target_name
     from pharmacophore.core.torsion import optimize_torsions
 
@@ -169,8 +171,10 @@ def screen_actives_decoys_matching(
     if limit is not None:
         candidates = candidates[:limit]
 
-    rows = []
+    rows, completed_paths = load_resume_rows(output_dir)
     for idx, (sdf_path, label) in enumerate(tqdm(candidates, desc=f"Screening {pipeline_name}")):
+        if str(sdf_path) in completed_paths:
+            continue
         tag = "active" if label == 1 else "decoy"
         try:
             mol = read_sdf_mol(sdf_path, sanitize=True, remove_hs=False, require_3d=True)
@@ -215,53 +219,51 @@ def screen_actives_decoys_matching(
                 score, score_source, matrix_shape, match_details, score_components = objective(mol)
                 opt_meta = {"torsion_count": 0, "theta": []}
 
-            rows.append(
-                {
-                    "pipeline": pipeline_name,
-                    "target": target_name,
-                    "name": mol.GetProp("_Name"),
-                    "path": str(sdf_path),
-                    "label": label,
-                    "score": score,
-                    "score_source": score_source,
-                    "query_feature_count": matrix_shape[0],
-                    "candidate_feature_count": matrix_shape[1],
-                    "matching_score_mode": score_components.get("score_mode", matching_score_mode),
-                    "hungarian_score_strict": score_components.get("strict_score", score),
-                    "hungarian_score_balanced": score_components.get("balanced_score", score),
-                    "feature_distance_score": score_components.get("feature_distance_score", score),
-                    "geometry_distance_score": score_components.get("geometry_distance_score", score),
-                    "selected_similarity_total": score_components.get("selected_similarity_total", 0.0),
-                    "matched_feature_count": score_components.get(
-                        "matched_feature_count",
-                        sum(1 for match in match_details if match.get("status") == "matched"),
-                    ),
-                    "matched_feature_distance_sum": score_components.get("matched_feature_distance_sum", 0.0),
-                    "matched_feature_distance_count": score_components.get("matched_feature_distance_count", 0),
-                    "average_feature_distance": score_components.get("average_feature_distance", 0.0),
-                    "geometry_distance_delta_sum": score_components.get("geometry_distance_delta_sum", 0.0),
-                    "geometry_distance_pair_count": score_components.get("geometry_distance_pair_count", 0),
-                    "average_geometry_distance_delta": score_components.get("average_geometry_distance_delta", 0.0),
-                    "matched_average_similarity": score_components.get("matched_average_similarity", 0.0),
-                    "query_feature_coverage": score_components.get("query_feature_coverage", 0.0),
-                    "candidate_feature_coverage": score_components.get("candidate_feature_coverage", 0.0),
-                    "matching_details": json.dumps(match_details, sort_keys=True),
-                    "torsion_count": opt_meta["torsion_count"],
-                }
-            )
+            row = {
+                "pipeline": pipeline_name,
+                "target": target_name,
+                "name": mol.GetProp("_Name"),
+                "path": str(sdf_path),
+                "label": label,
+                "score": score,
+                "score_source": score_source,
+                "query_feature_count": matrix_shape[0],
+                "candidate_feature_count": matrix_shape[1],
+                "matching_score_mode": score_components.get("score_mode", matching_score_mode),
+                "hungarian_score_strict": score_components.get("strict_score", score),
+                "hungarian_score_balanced": score_components.get("balanced_score", score),
+                "feature_distance_score": score_components.get("feature_distance_score", score),
+                "geometry_distance_score": score_components.get("geometry_distance_score", score),
+                "selected_similarity_total": score_components.get("selected_similarity_total", 0.0),
+                "matched_feature_count": score_components.get(
+                    "matched_feature_count",
+                    sum(1 for match in match_details if match.get("status") == "matched"),
+                ),
+                "matched_feature_distance_sum": score_components.get("matched_feature_distance_sum", 0.0),
+                "matched_feature_distance_count": score_components.get("matched_feature_distance_count", 0),
+                "average_feature_distance": score_components.get("average_feature_distance", 0.0),
+                "geometry_distance_delta_sum": score_components.get("geometry_distance_delta_sum", 0.0),
+                "geometry_distance_pair_count": score_components.get("geometry_distance_pair_count", 0),
+                "average_geometry_distance_delta": score_components.get("average_geometry_distance_delta", 0.0),
+                "matched_average_similarity": score_components.get("matched_average_similarity", 0.0),
+                "query_feature_coverage": score_components.get("query_feature_coverage", 0.0),
+                "candidate_feature_coverage": score_components.get("candidate_feature_coverage", 0.0),
+                "matching_details": json.dumps(match_details, sort_keys=True),
+                "torsion_count": opt_meta["torsion_count"],
+            }
         except Exception as exc:
-            rows.append(
-                {
-                    "pipeline": pipeline_name,
-                    "target": target_name,
-                    "name": sdf_path.stem,
-                    "path": str(sdf_path),
-                    "label": label,
-                    "score": float("nan"),
-                    "torsion_count": 0,
-                    "error": str(exc),
-                }
-            )
+            row = {
+                "pipeline": pipeline_name,
+                "target": target_name,
+                "name": sdf_path.stem,
+                "path": str(sdf_path),
+                "label": label,
+                "score": float("nan"),
+                "torsion_count": 0,
+                "error": str(exc),
+            }
+        rows.append(row)
+        append_score_row(output_dir, row)
 
     rows = [row for row in rows if row.get("score") == row.get("score")]
     return write_outputs(
