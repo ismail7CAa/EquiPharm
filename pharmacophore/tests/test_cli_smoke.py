@@ -22,6 +22,10 @@ from pharmacophore.EquiPharm import cli as equipharm_cli
 from pharmacophore.EquiPharm import screening as equipharm_screening
 from pharmacophore.EquiPharm_Hungarian import cli as hungarian_cli
 from pharmacophore.EquiPharm_Hungarian import screening as hungarian_screening
+from pharmacophore.EquiPharm_Hungarian_Cosine import cli as hungarian_cosine_cli
+from pharmacophore.EquiPharm_Hungarian_Cosine import screening as hungarian_cosine_screening
+from pharmacophore.EquiPharm_Hungarian_Cosine_v2 import cli as hungarian_cosine_v2_cli
+from pharmacophore.EquiPharm_Hungarian_Cosine_v2 import screening as hungarian_cosine_v2_screening
 from pharmacophore.EquiPharm_Hungarian_v2 import cli as hungarian_v2_cli
 from pharmacophore.EquiPharm_Hungarian_v2 import screening as hungarian_v2_screening
 from pharmacophore.Equiformer_with_optimization import cli as equiformer_cli
@@ -87,6 +91,42 @@ class PipelineWrapperTests(unittest.TestCase):
         self.assertEqual(kwargs["pipeline_name"], "EquiPharm_Hungarian_v2")
         self.assertEqual(kwargs["matching_method"], "hungarian")
         self.assertEqual(kwargs["matching_score_mode"], "geometry_distance")
+        self.assertEqual(kwargs["model_module"], "benchmarking.Methods.equiformer_encoder_matching")
+
+    def test_equipharm_hungarian_cosine_wrapper_sets_expected_defaults(self):
+        with patch.object(hungarian_cosine_screening, "screen_actives_decoys_matching") as run:
+            run.return_value = {"roc_auc": 1.0}
+            result = hungarian_cosine_screening.run_equipharm_hungarian_cosine_screening(
+                checkpoint_path="checkpoint.pt",
+                query_ligand="query.mol2",
+                actives_dir="actives_sdf",
+                decoys_dir="decoys_sdf",
+                output_dir="pharmacophore/results/EquiPharm_Hungarian_Cosine/aces",
+            )
+
+        self.assertEqual(result, {"roc_auc": 1.0})
+        kwargs = run.call_args.kwargs
+        self.assertEqual(kwargs["pipeline_name"], "EquiPharm_Hungarian_Cosine")
+        self.assertEqual(kwargs["matching_method"], "hungarian")
+        self.assertEqual(kwargs["matching_score_mode"], "cosine")
+        self.assertEqual(kwargs["model_module"], "benchmarking.Methods.equiformer_encoder_matching")
+
+    def test_equipharm_hungarian_cosine_v2_wrapper_sets_expected_defaults(self):
+        with patch.object(hungarian_cosine_v2_screening, "screen_actives_decoys_matching") as run:
+            run.return_value = {"roc_auc": 1.0}
+            result = hungarian_cosine_v2_screening.run_equipharm_hungarian_cosine_v2_screening(
+                checkpoint_path="checkpoint.pt",
+                query_ligand="query.mol2",
+                actives_dir="actives_sdf",
+                decoys_dir="decoys_sdf",
+                output_dir="pharmacophore/results/EquiPharm_Hungarian_Cosine_v2/aces",
+            )
+
+        self.assertEqual(result, {"roc_auc": 1.0})
+        kwargs = run.call_args.kwargs
+        self.assertEqual(kwargs["pipeline_name"], "EquiPharm_Hungarian_Cosine_v2")
+        self.assertEqual(kwargs["matching_method"], "hungarian")
+        self.assertEqual(kwargs["matching_score_mode"], "cosine_geometry")
         self.assertEqual(kwargs["model_module"], "benchmarking.Methods.equiformer_encoder_matching")
 
     def test_all_runner_uses_dataset_specific_output_root(self):

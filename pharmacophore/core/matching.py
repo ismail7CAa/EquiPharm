@@ -23,6 +23,8 @@ STRICT_SCORE_MODE = "strict"
 BALANCED_SCORE_MODE = "balanced"
 FEATURE_DISTANCE_SCORE_MODE = "feature_distance"
 GEOMETRY_DISTANCE_SCORE_MODE = "geometry_distance"
+COSINE_SCORE_MODE = "cosine"
+COSINE_GEOMETRY_SCORE_MODE = "cosine_geometry"
 NO_MATCH_DISTANCE = 1_000_000.0
 
 
@@ -165,7 +167,42 @@ def distance_score_components(match_details: list[dict]) -> dict:
     }
 
 
+def cosine_score_components(
+    query_features: torch.Tensor,
+    candidate_features: torch.Tensor,
+    assignments: list[tuple[int, int | None]],
+) -> dict:
+    matched = [(row, col) for row, col in assignments if col is not None]
+    similarity = cosine_similarity_matrix(query_features, candidate_features)
+    matched_values = [float(similarity[row, col].detach().cpu().item()) for row, col in matched]
+    matched_average = sum(matched_values) / len(matched_values) if matched_values else 0.0
+
+    query_internal = cosine_similarity_matrix(query_features, query_features)
+    candidate_internal = cosine_similarity_matrix(candidate_features, candidate_features)
+    geometry_deltas = []
+    for (left_query, left_candidate), (right_query, right_candidate) in itertools.combinations(matched, 2):
+        query_distance = 1.0 - float(query_internal[left_query, right_query].detach().cpu().item())
+        candidate_distance = 1.0 - float(candidate_internal[left_candidate, right_candidate].detach().cpu().item())
+        geometry_deltas.append(abs(query_distance - candidate_distance))
+
+    geometry_average = sum(geometry_deltas) / len(geometry_deltas) if geometry_deltas else 0.0
+    geometry_score = -geometry_average if geometry_deltas else matched_average
+    return {
+        "matched_cosine_similarity_sum": float(sum(matched_values)),
+        "matched_cosine_similarity_count": int(len(matched_values)),
+        "matched_cosine_similarity_score": float(matched_average),
+        "cosine_geometry_delta_sum": float(sum(geometry_deltas)),
+        "cosine_geometry_pair_count": int(len(geometry_deltas)),
+        "average_cosine_geometry_delta": float(geometry_average),
+        "cosine_geometry_score": float(geometry_score),
+    }
+
+
 def select_score(components: dict, score_mode: str) -> float:
+    if score_mode == COSINE_SCORE_MODE:
+        return float(components["matched_cosine_similarity_score"])
+    if score_mode == COSINE_GEOMETRY_SCORE_MODE:
+        return float(components["cosine_geometry_score"])
     if score_mode == FEATURE_DISTANCE_SCORE_MODE:
         return float(components["feature_distance_score"])
     if score_mode == GEOMETRY_DISTANCE_SCORE_MODE:
@@ -307,6 +344,7 @@ def matching_score(
     match_details = build_match_details(similarity, assignments, query_metadata, candidate_metadata)
     components = dict(components)
     components.update(distance_score_components(match_details))
+    components.update(cosine_score_components(query_features, candidate_features, assignments))
     components["score_mode"] = score_mode
     score = select_score(components, score_mode)
     return score, similarity, match_details, components

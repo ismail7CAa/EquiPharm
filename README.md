@@ -78,10 +78,12 @@ The pharmacophore pipeline applies the selected 3D representation approach to vi
 - `EquiPharm`: an Equiformer-based workflow that attaches RDKit pharmacophore features to molecular graphs before encoding.
 - `EquiPharm_Hungarian`: a copy of EquiPharm that matches feature-level query/candidate similarity matrices with Hungarian assignment, then ranks by negative average matched-feature distance.
 - `EquiPharm_Hungarian_v2`: the same Hungarian feature matching, then ranks by negative average internal pharmacophore-geometry distance error.
+- `EquiPharm_Hungarian_Cosine`: Hungarian feature matching ranked by mean matched-pair embedding cosine similarity.
+- `EquiPharm_Hungarian_Cosine_v2`: Hungarian feature matching ranked by internal embedding cosine-geometry preservation.
 - `Equiformer_with_optimization`: a baseline Equiformer screening workflow with the same torsion optimization and active/decoy evaluation flow, but without explicit pharmacophore feature attachment.
 - `CDPKit`, `PharmacoMatch`, `SchrodingerPhase`, `OpenPharmaco`, `Pharmit`, and `DiscoveryStudio`: optional external baseline adapters.
 
-The Hungarian variants use `benchmarking.Methods.equiformer_encoder_matching` to expose feature-level pharmacophore embeddings before assignment scoring. Their cost matrix allows same-family pharmacophore matches, such as donor-to-donor or aromatic-to-aromatic, and sets incompatible pairs to `Inf`. After matching, `EquiPharm_Hungarian` uses `score = -mean(d_i)` for matched query-candidate feature distances, while `EquiPharm_Hungarian_v2` uses `score = -mean(|d_g - d_g'|)` for internal query/candidate geometry differences.
+The Hungarian variants use `benchmarking.Methods.equiformer_encoder_matching` to expose feature-level pharmacophore embeddings before assignment scoring. Their cost matrix allows same-family pharmacophore matches, such as donor-to-donor or aromatic-to-aromatic, and sets incompatible pairs to `Inf`. After matching, the spatial variants use 3D pharmacophore distances, while the cosine variants use embedding cosine similarity and cosine-distance geometry.
 
 These workflows use shared utilities for molecule loading, RDKit-to-PyG conversion, torsion optimization, scoring, metric calculation, and plot generation. This keeps the screening logic reproducible while allowing direct comparison between pharmacophore-aware, matching-based, and external screening methods.
 
@@ -95,7 +97,9 @@ benchmarking/
 pharmacophore/
   EquiPharm/                       # Pharmacophore-feature-aware screening pipeline
   EquiPharm_Hungarian/             # Feature-level Hungarian matching pipeline
-  EquiPharm_Hungarian_v2/          # Balanced-score Hungarian matching pipeline
+  EquiPharm_Hungarian_v2/          # Spatial geometry Hungarian matching pipeline
+  EquiPharm_Hungarian_Cosine/      # Matched cosine Hungarian matching pipeline
+  EquiPharm_Hungarian_Cosine_v2/   # Cosine geometry Hungarian matching pipeline
   CDPKit/                          # CDPKit external baseline adapter
   PharmacoMatch/                   # PharmacoMatch command-template adapter
   SchrodingerPhase/                # Schrodinger Phase command-template adapter
@@ -358,6 +362,26 @@ python -m pharmacophore.EquiPharm_Hungarian_v2.cli \
   --output-dir pharmacophore/results/EquiPharm_Hungarian_v2/<target>
 ```
 
+Run the matched-cosine Hungarian matching variant:
+
+```bash
+python -m pharmacophore.EquiPharm_Hungarian_Cosine.cli \
+  --target-dir data/DUD-E/<target> \
+  --target-name <target> \
+  --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
+  --output-dir pharmacophore/results/EquiPharm_Hungarian_Cosine/<target>
+```
+
+Run the cosine-geometry Hungarian matching variant:
+
+```bash
+python -m pharmacophore.EquiPharm_Hungarian_Cosine_v2.cli \
+  --target-dir data/DUD-E/<target> \
+  --target-name <target> \
+  --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
+  --output-dir pharmacophore/results/EquiPharm_Hungarian_Cosine_v2/<target>
+```
+
 EquiPharm-family screening runs are resumable. Each completed molecule is appended to `scores.csv` inside the selected `--output-dir`; if the server interrupts the job, rerun the same command and already-scored molecule paths are skipped:
 
 ```bash
@@ -370,7 +394,7 @@ python -m pharmacophore.EquiPharm_Hungarian_v2.cli \
 
 To force a fresh run, remove the target output directory or its `scores.csv` first.
 
-Run CDPKit, PharmacoMatch, SchrodingerPhase, OpenPharmaco, Pharmit, DiscoveryStudio, EquiPharm, EquiPharm_Hungarian, and EquiPharm_Hungarian_v2 together and aggregate their CSV tables:
+Run CDPKit, PharmacoMatch, SchrodingerPhase, OpenPharmaco, Pharmit, DiscoveryStudio, EquiPharm, and all Hungarian variants together and aggregate their CSV tables:
 
 ```bash
 python -m pharmacophore.run_all_screening \
@@ -430,6 +454,12 @@ python -m pharmacophore.EquiPharm_Hungarian.cli \
 python -m pharmacophore.EquiPharm_Hungarian_v2.cli \
   --config pharmacophore/EquiPharm_Hungarian_v2/configs/target.example.json
 
+python -m pharmacophore.EquiPharm_Hungarian_Cosine.cli \
+  --config pharmacophore/EquiPharm_Hungarian_Cosine/configs/target.example.json
+
+python -m pharmacophore.EquiPharm_Hungarian_Cosine_v2.cli \
+  --config pharmacophore/EquiPharm_Hungarian_Cosine_v2/configs/target.example.json
+
 python -m pharmacophore.Equiformer_with_optimization.cli \
   --config pharmacophore/Equiformer_with_optimization/configs/target.example.json
 
@@ -459,7 +489,7 @@ pharmacophore/results/<pipeline>/<target>/
   auroc_curve_coordinates.csv
   cosine_similarity_boxplot.png
   roc_curve_actives_vs_decoys.png       # EquiPharm-family pipelines
-  <pipeline>_<target>_auroc_curve.png   # EquiPharm, EquiPharm_Hungarian, EquiPharm_Hungarian_v2
+  <pipeline>_<target>_auroc_curve.png   # EquiPharm and Hungarian variants
 ```
 
 The all-method runner also writes:
@@ -476,7 +506,7 @@ pharmacophore/results/<dataset>/
       screening_performance_summary.csv
       auroc_curve_coordinates.csv
       roc_curve_actives_vs_decoys.png       # EquiPharm-family pipelines
-      <pipeline>_<target>_auroc_curve.png   # EquiPharm, EquiPharm_Hungarian, EquiPharm_Hungarian_v2
+      <pipeline>_<target>_auroc_curve.png   # EquiPharm and Hungarian variants
 ```
 
 Examples:

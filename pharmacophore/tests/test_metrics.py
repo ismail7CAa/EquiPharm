@@ -223,6 +223,80 @@ class ScreeningMetricsTests(unittest.TestCase):
         self.assertEqual(components["geometry_distance_pair_count"], 1)
         self.assertEqual([match["status"] for match in match_details], ["matched", "matched"])
 
+    def test_cosine_score_uses_average_matched_embedding_similarity(self):
+        if torch is None:
+            self.skipTest("torch is not installed")
+        query = torch.tensor(
+            [
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+            ],
+            dtype=torch.float32,
+        )
+        candidate = torch.tensor(
+            [
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+            ],
+            dtype=torch.float32,
+        )
+        query_metadata = [{"family": "Donor"}, {"family": "Acceptor"}]
+        candidate_metadata = [
+            {"family": "Donor"},
+            {"family": "Acceptor"},
+            {"family": "Aromatic"},
+        ]
+
+        score, _, match_details, components = matching_score(
+            query,
+            candidate,
+            query_metadata=query_metadata,
+            candidate_metadata=candidate_metadata,
+            method="hungarian",
+            score_mode="cosine",
+        )
+
+        self.assertAlmostEqual(score, 1.0, places=6)
+        self.assertAlmostEqual(components["matched_cosine_similarity_score"], 1.0, places=6)
+        self.assertEqual(components["matched_cosine_similarity_count"], 2)
+        self.assertEqual([match["status"] for match in match_details], ["matched", "matched"])
+
+    def test_cosine_geometry_score_compares_internal_embedding_distances(self):
+        if torch is None:
+            self.skipTest("torch is not installed")
+        query = torch.tensor(
+            [
+                [1.0, 0.0],
+                [0.0, 1.0],
+            ],
+            dtype=torch.float32,
+        )
+        candidate = torch.tensor(
+            [
+                [1.0, 0.0],
+                [0.5, 0.8660254],
+            ],
+            dtype=torch.float32,
+        )
+        query_metadata = [{"family": "Donor"}, {"family": "Acceptor"}]
+        candidate_metadata = [{"family": "Donor"}, {"family": "Acceptor"}]
+
+        score, _, match_details, components = matching_score(
+            query,
+            candidate,
+            query_metadata=query_metadata,
+            candidate_metadata=candidate_metadata,
+            method="hungarian",
+            score_mode="cosine_geometry",
+        )
+
+        self.assertAlmostEqual(score, -0.5, places=6)
+        self.assertAlmostEqual(components["average_cosine_geometry_delta"], 0.5, places=6)
+        self.assertAlmostEqual(components["cosine_geometry_score"], -0.5, places=6)
+        self.assertEqual(components["cosine_geometry_pair_count"], 1)
+        self.assertEqual([match["status"] for match in match_details], ["matched", "matched"])
+
 
 if __name__ == "__main__":
     unittest.main()
