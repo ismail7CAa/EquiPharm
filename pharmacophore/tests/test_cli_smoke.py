@@ -99,6 +99,15 @@ class PipelineWrapperTests(unittest.TestCase):
             Path("pharmacophore/results/DUD-E"),
         )
 
+    def test_all_runner_can_exclude_pipelines(self):
+        args = types.SimpleNamespace(exclude_pipeline=["EquiPharm_Hungarian", "EquiPharm_Hungarian_v2"])
+
+        pipelines = run_all_screening.selected_pipelines(args)
+
+        self.assertIn("EquiPharm", pipelines)
+        self.assertNotIn("EquiPharm_Hungarian", pipelines)
+        self.assertNotIn("EquiPharm_Hungarian_v2", pipelines)
+
     def test_equiformer_wrapper_sets_expected_defaults(self):
         with patch.object(equiformer_screening, "screen_actives_decoys") as run:
             run.return_value = {"roc_auc": 0.5}

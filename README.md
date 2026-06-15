@@ -386,7 +386,9 @@ python -m pharmacophore.run_all_screening \
   --pharmit-command-template "pharmit_screen --query {query_ligand} --candidate {candidate} --json" \
   --pharmit-score-json-key score \
   --discoverystudio-command-template "discovery_studio_pharmacophore_screen --query {query_ligand} --candidate {candidate} --json" \
-  --discoverystudio-score-json-key score
+  --discoverystudio-score-json-key score \
+  --exclude-pipeline EquiPharm_Hungarian \
+  --exclude-pipeline EquiPharm_Hungarian_v2
 ```
 
 Run the same all-method pipeline on additional normalized datasets by changing `--dataset-dir`:

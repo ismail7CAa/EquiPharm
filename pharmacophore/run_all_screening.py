@@ -83,6 +83,13 @@ def parse_args():
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--device", choices=["cuda", "cpu"], default="cuda")
     parser.add_argument("--target", action="append", help="Run only this DUD-E target. Can be repeated.")
+    parser.add_argument(
+        "--exclude-pipeline",
+        action="append",
+        choices=MODEL_PIPELINES,
+        default=[],
+        help="Skip this pipeline. Can be repeated.",
+    )
     parser.add_argument("--limit", type=int)
     parser.add_argument("--no-optimize", action="store_true")
     parser.add_argument("--maxiter", type=int, default=3)
@@ -129,7 +136,7 @@ def main() -> None:
     metrics_rows = []
     for target_dir in target_dirs:
         target_name = target_dir.name
-        for pipeline in MODEL_PIPELINES:
+        for pipeline in selected_pipelines(args):
             try:
                 metrics = run_one_pipeline(args, pipeline, target_dir, output_root)
                 metrics["dataset"] = dataset_name
@@ -174,6 +181,11 @@ def resolve_output_root(output_dir: str | Path, dataset_name: str) -> Path:
     if output_path.name == dataset_name:
         return output_path
     return output_path / dataset_name
+
+
+def selected_pipelines(args) -> tuple[str, ...]:
+    excluded = set(args.exclude_pipeline or [])
+    return tuple(pipeline for pipeline in MODEL_PIPELINES if pipeline not in excluded)
 
 
 def run_one_pipeline(args, pipeline: str, target_dir: Path, output_root: Path) -> dict:
