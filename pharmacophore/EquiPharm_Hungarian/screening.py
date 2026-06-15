@@ -14,6 +14,7 @@ def run_equipharm_hungarian_screening(**kwargs):
     kwargs.setdefault("model_class", "EquiformerQM9")
     kwargs.setdefault("pipeline_name", "EquiPharm_Hungarian")
     kwargs.setdefault("matching_method", "hungarian")
+    kwargs.setdefault("matching_score_mode", "feature_distance")
     kwargs.setdefault("rotatable_only", False)
     kwargs.setdefault("heavy_only", True)
     kwargs.setdefault("exclude_rings", True)

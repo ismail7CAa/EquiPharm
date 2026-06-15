@@ -21,6 +21,9 @@ PHARMACOPHORE_FAMILY_GROUPS = {
 
 STRICT_SCORE_MODE = "strict"
 BALANCED_SCORE_MODE = "balanced"
+FEATURE_DISTANCE_SCORE_MODE = "feature_distance"
+GEOMETRY_DISTANCE_SCORE_MODE = "geometry_distance"
+NO_MATCH_DISTANCE = 1_000_000.0
 
 
 def cosine_similarity_matrix(query_features: torch.Tensor, candidate_features: torch.Tensor) -> torch.Tensor:
@@ -128,12 +131,56 @@ def empty_score_components() -> dict:
     }
 
 
+def distance_score_components(match_details: list[dict]) -> dict:
+    matched = [match for match in match_details if match.get("status") == "matched"]
+    feature_distances = [
+        float(match["feature_distance"])
+        for match in matched
+        if match.get("feature_distance") is not None
+    ]
+    feature_average = sum(feature_distances) / len(feature_distances) if feature_distances else NO_MATCH_DISTANCE
+
+    geometry_deltas = []
+    for left, right in itertools.combinations(matched, 2):
+        left_query_center = left.get("query_center")
+        right_query_center = right.get("query_center")
+        left_candidate_center = left.get("candidate_center")
+        right_candidate_center = right.get("candidate_center")
+        if not all((left_query_center, right_query_center, left_candidate_center, right_candidate_center)):
+            continue
+        query_distance = euclidean_distance(left_query_center, right_query_center)
+        candidate_distance = euclidean_distance(left_candidate_center, right_candidate_center)
+        geometry_deltas.append(abs(query_distance - candidate_distance))
+
+    geometry_average = sum(geometry_deltas) / len(geometry_deltas) if geometry_deltas else feature_average
+    return {
+        "matched_feature_distance_sum": float(sum(feature_distances)),
+        "matched_feature_distance_count": int(len(feature_distances)),
+        "average_feature_distance": float(feature_average),
+        "feature_distance_score": float(-feature_average),
+        "geometry_distance_delta_sum": float(sum(geometry_deltas)),
+        "geometry_distance_pair_count": int(len(geometry_deltas)),
+        "average_geometry_distance_delta": float(geometry_average),
+        "geometry_distance_score": float(-geometry_average),
+    }
+
+
 def select_score(components: dict, score_mode: str) -> float:
+    if score_mode == FEATURE_DISTANCE_SCORE_MODE:
+        return float(components["feature_distance_score"])
+    if score_mode == GEOMETRY_DISTANCE_SCORE_MODE:
+        return float(components["geometry_distance_score"])
     if score_mode == STRICT_SCORE_MODE:
         return float(components["strict_score"])
     if score_mode == BALANCED_SCORE_MODE:
         return float(components["balanced_score"])
     raise ValueError(f"Unknown Hungarian score mode: {score_mode}")
+
+
+def euclidean_distance(left, right) -> float:
+    left_tensor = torch.as_tensor(left, dtype=torch.float32)
+    right_tensor = torch.as_tensor(right, dtype=torch.float32)
+    return float(torch.linalg.vector_norm(left_tensor - right_tensor).item())
 
 
 def build_hungarian_cost_matrix(
@@ -188,6 +235,7 @@ def build_match_details(
     candidate_metadata = candidate_metadata or []
     for query_index, candidate_index in sorted(assignments, key=lambda pair: pair[0]):
         query_feature = query_metadata[query_index] if query_index < len(query_metadata) else {}
+        query_center = query_feature.get("center")
         if candidate_index is None:
             details.append(
                 {
@@ -196,9 +244,12 @@ def build_match_details(
                     "query_family": query_feature.get("family"),
                     "query_type": query_feature.get("type"),
                     "query_atom_ids": query_feature.get("atom_ids", ()),
+                    "query_center": query_center,
                     "candidate_family": None,
                     "candidate_type": None,
                     "candidate_atom_ids": (),
+                    "candidate_center": None,
+                    "feature_distance": None,
                     "similarity": 0.0,
                     "status": "unmatched",
                 }
@@ -206,6 +257,12 @@ def build_match_details(
             continue
 
         candidate_feature = candidate_metadata[candidate_index] if candidate_index < len(candidate_metadata) else {}
+        candidate_center = candidate_feature.get("center")
+        feature_distance = (
+            euclidean_distance(query_center, candidate_center)
+            if query_center is not None and candidate_center is not None
+            else None
+        )
         details.append(
             {
                 "query_index": query_index,
@@ -213,9 +270,12 @@ def build_match_details(
                 "query_family": query_feature.get("family"),
                 "query_type": query_feature.get("type"),
                 "query_atom_ids": query_feature.get("atom_ids", ()),
+                "query_center": query_center,
                 "candidate_family": candidate_feature.get("family"),
                 "candidate_type": candidate_feature.get("type"),
                 "candidate_atom_ids": candidate_feature.get("atom_ids", ()),
+                "candidate_center": candidate_center,
+                "feature_distance": feature_distance,
                 "similarity": float(similarity[query_index, candidate_index].detach().cpu().item()),
                 "status": "matched",
             }
@@ -244,10 +304,11 @@ def matching_score(
         compatibility_mask = feature_family_compatibility_mask(query_metadata, candidate_metadata).to(similarity.device)
 
     _, assignments, components = hungarian_matching_score(similarity, compatibility_mask=compatibility_mask)
-    score = select_score(components, score_mode)
     match_details = build_match_details(similarity, assignments, query_metadata, candidate_metadata)
     components = dict(components)
+    components.update(distance_score_components(match_details))
     components["score_mode"] = score_mode
+    score = select_score(components, score_mode)
     return score, similarity, match_details, components
 
 

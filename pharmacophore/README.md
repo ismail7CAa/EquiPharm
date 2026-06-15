@@ -51,8 +51,8 @@ This is a copy of EquiPharm that keeps the extracted RDKit pharmacophore feature
 `EquiPharm_Hungarian` uses hard one-to-one Hungarian assignment through the shared encoder module `benchmarking.Methods.equiformer_encoder_matching`.
 The matching cost matrix is constrained by pharmacophore family: donor-to-donor, acceptor-to-acceptor, aromatic-to-aromatic, and related same-family matches are allowed, while incompatible pairs are assigned `Inf` and cannot be selected.
 
-`EquiPharm_Hungarian` keeps the strict score, `sum(matches) / max(num_query_features, num_candidate_features)`.
-`EquiPharm_Hungarian_v2` uses the balanced score, `matched_average * query_coverage`, where `matched_average = sum(matches) / num_matched_features` and `query_coverage = num_matched_features / num_query_features`.
+After matching, `EquiPharm_Hungarian` uses `score = -mean(d_i)`, where `d_i` is the 3D distance between a matched query pharmacophore feature and candidate pharmacophore feature.
+`EquiPharm_Hungarian_v2` uses `score = -mean(|d_g - d_g'|)`, where `d_g` is the distance between two matched query features and `d_g'` is the distance between their corresponding candidate features.
 
 Run Hungarian matching:
 
@@ -64,7 +64,7 @@ python -m pharmacophore.EquiPharm_Hungarian.cli \
   --output-dir pharmacophore/results/EquiPharm_Hungarian/<target>
 ```
 
-Run balanced Hungarian matching:
+Run geometry-distance Hungarian matching:
 
 ```bash
 python -m pharmacophore.EquiPharm_Hungarian_v2.cli \
@@ -339,7 +339,7 @@ pharmacophore/results/BayesBind/all_screening_metrics.csv
 
 `metrics.json` and `screening_performance_summary.csv` include AUROC, PR-AUC, EF1%, and BEDROC(alpha=20), plus the pipeline name and protein target name.
 `auroc_curve_coordinates.csv` stores the false-positive-rate, true-positive-rate, and threshold values used to draw the ROC curve.
-For `EquiPharm_Hungarian` and `EquiPharm_Hungarian_v2`, `scores.csv` also includes `hungarian_score_strict`, `hungarian_score_balanced`, `matched_feature_count`, coverage columns, and `matching_details`, where `matching_details` is JSON describing the selected query-candidate pharmacophore feature matches and unmatched query features.
+For `EquiPharm_Hungarian` and `EquiPharm_Hungarian_v2`, `scores.csv` also includes `feature_distance_score`, `geometry_distance_score`, raw average-distance columns, `matched_feature_count`, coverage columns, and `matching_details`, where `matching_details` is JSON describing the selected query-candidate pharmacophore feature matches and unmatched query features.
 If `--target-name` is omitted, the target is inferred from paths like `data/DUD-E/<target>/...`.
 
 Existing reference plots and CSV exports from the exploratory workflow are kept in:

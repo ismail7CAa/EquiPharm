@@ -76,12 +76,12 @@ This stage provides a controlled comparison of model families and produces check
 The pharmacophore pipeline applies the selected 3D representation approach to virtual screening on DUD-E targets. It contains maintained screening workflows and external baseline adapters:
 
 - `EquiPharm`: an Equiformer-based workflow that attaches RDKit pharmacophore features to molecular graphs before encoding.
-- `EquiPharm_Hungarian`: a copy of EquiPharm that scores feature-level query/candidate similarity matrices with Hungarian matching.
-- `EquiPharm_Hungarian_v2`: the same Hungarian feature matching, scored with `matched_average * query_coverage`.
+- `EquiPharm_Hungarian`: a copy of EquiPharm that matches feature-level query/candidate similarity matrices with Hungarian assignment, then ranks by negative average matched-feature distance.
+- `EquiPharm_Hungarian_v2`: the same Hungarian feature matching, then ranks by negative average internal pharmacophore-geometry distance error.
 - `Equiformer_with_optimization`: a baseline Equiformer screening workflow with the same torsion optimization and active/decoy evaluation flow, but without explicit pharmacophore feature attachment.
 - `CDPKit`, `PharmacoMatch`, `SchrodingerPhase`, `OpenPharmaco`, `Pharmit`, and `DiscoveryStudio`: optional external baseline adapters.
 
-The Hungarian variants use `benchmarking.Methods.equiformer_encoder_matching` to expose feature-level pharmacophore embeddings before assignment scoring. Their cost matrix allows same-family pharmacophore matches, such as donor-to-donor or aromatic-to-aromatic, and sets incompatible pairs to `Inf`. `EquiPharm_Hungarian` uses the strict score, while `EquiPharm_Hungarian_v2` uses the balanced score.
+The Hungarian variants use `benchmarking.Methods.equiformer_encoder_matching` to expose feature-level pharmacophore embeddings before assignment scoring. Their cost matrix allows same-family pharmacophore matches, such as donor-to-donor or aromatic-to-aromatic, and sets incompatible pairs to `Inf`. After matching, `EquiPharm_Hungarian` uses `score = -mean(d_i)` for matched query-candidate feature distances, while `EquiPharm_Hungarian_v2` uses `score = -mean(|d_g - d_g'|)` for internal query/candidate geometry differences.
 
 These workflows use shared utilities for molecule loading, RDKit-to-PyG conversion, torsion optimization, scoring, metric calculation, and plot generation. This keeps the screening logic reproducible while allowing direct comparison between pharmacophore-aware, matching-based, and external screening methods.
 
@@ -348,7 +348,7 @@ python -m pharmacophore.EquiPharm_Hungarian.cli \
   --output-dir pharmacophore/results/EquiPharm_Hungarian/<target>
 ```
 
-Run the balanced-score Hungarian matching variant:
+Run the geometry-distance Hungarian matching variant:
 
 ```bash
 python -m pharmacophore.EquiPharm_Hungarian_v2.cli \

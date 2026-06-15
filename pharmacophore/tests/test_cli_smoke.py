@@ -68,6 +68,7 @@ class PipelineWrapperTests(unittest.TestCase):
         kwargs = run.call_args.kwargs
         self.assertEqual(kwargs["pipeline_name"], "EquiPharm_Hungarian")
         self.assertEqual(kwargs["matching_method"], "hungarian")
+        self.assertEqual(kwargs["matching_score_mode"], "feature_distance")
         self.assertEqual(kwargs["model_module"], "benchmarking.Methods.equiformer_encoder_matching")
 
     def test_equipharm_hungarian_v2_wrapper_sets_expected_defaults(self):
@@ -85,7 +86,7 @@ class PipelineWrapperTests(unittest.TestCase):
         kwargs = run.call_args.kwargs
         self.assertEqual(kwargs["pipeline_name"], "EquiPharm_Hungarian_v2")
         self.assertEqual(kwargs["matching_method"], "hungarian")
-        self.assertEqual(kwargs["matching_score_mode"], "balanced")
+        self.assertEqual(kwargs["matching_score_mode"], "geometry_distance")
         self.assertEqual(kwargs["model_module"], "benchmarking.Methods.equiformer_encoder_matching")
 
     def test_all_runner_uses_dataset_specific_output_root(self):

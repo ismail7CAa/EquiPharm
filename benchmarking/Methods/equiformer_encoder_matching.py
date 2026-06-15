@@ -196,7 +196,7 @@ class EquiformerQM9(nn.Module):
 
             yield feat, valid_ids
 
-    def pharmacophore_feature_embeddings(self, atom_embeddings, pharmacophore_features, mask=None):
+    def pharmacophore_feature_embeddings(self, atom_embeddings, pharmacophore_features, mask=None, coords=None):
         """
         Return one embedding per RDKit pharmacophore feature instead of one pooled
         molecule vector. Matching pipelines use these embeddings to build the
@@ -212,13 +212,15 @@ class EquiformerQM9(nn.Module):
             mask=mask,
         ):
             feat_embs.append(atom_embeddings[valid_ids].mean(dim=0))
-            metadata.append(
-                {
-                    "atom_ids": tuple(int(i) for i in valid_ids),
-                    "family": feat.get("family"),
-                    "type": feat.get("type"),
-                }
-            )
+            feature_info = {
+                "atom_ids": tuple(int(i) for i in valid_ids),
+                "family": feat.get("family"),
+                "type": feat.get("type"),
+            }
+            if coords is not None:
+                center = coords[valid_ids].mean(dim=0).detach().cpu().tolist()
+                feature_info["center"] = tuple(float(value) for value in center)
+            metadata.append(feature_info)
 
         if len(feat_embs) == 0:
             return atom_embeddings.new_zeros((0, atom_embeddings.size(-1))), []
@@ -338,6 +340,7 @@ class EquiformerQM9(nn.Module):
                 atom_embeddings=atom_emb_b,
                 pharmacophore_features=pharma_feats_b or [],
                 mask=mask_b,
+                coords=coords[b],
             )
             outputs.append(
                 {

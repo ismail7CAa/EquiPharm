@@ -5,6 +5,7 @@
   "decoys_dir": "data/DUD-E/<target>/decoys_sdf",
   "output_dir": "pharmacophore/results/EquiPharm_Hungarian/<target>",
   "target_name": "<target>",
+  "matching_score_mode": "feature_distance",
   "device": "cuda",
   "optimize": true,
   "maxiter": 3,
