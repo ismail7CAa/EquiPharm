@@ -4,6 +4,10 @@
 data/
 dataset/
 .downloads/
+external/CDPKit/
+external/*.dmg
+external/*.sh
+external/*.exe
 *.npz
 *.csv
 *.pkl

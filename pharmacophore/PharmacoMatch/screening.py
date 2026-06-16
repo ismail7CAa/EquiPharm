@@ -287,11 +287,16 @@ def _resolve_cdpkit_bin(cdpkit_bin: str | Path | None) -> Path:
             return path
         raise FileNotFoundError(f"CDPKit psdcreate not found in: {path}")
 
+    vendored_path = Path("external/CDPKit/Bin")
+    if (vendored_path / "psdcreate").exists():
+        return vendored_path
+
     executable = shutil.which("psdcreate")
     if executable:
         return Path(executable).parent
     raise FileNotFoundError(
-        "CDPKit psdcreate was not found on PATH. Install CDPKit or pass "
+        "CDPKit psdcreate was not found. Install CDPKit into `external/CDPKit` "
+        "with `python scripts/install_cdpkit.py`, add psdcreate to PATH, or pass "
         "`--cdpkit-bin /path/to/CDPKit/Bin`."
     )
 
