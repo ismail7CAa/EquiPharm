@@ -40,13 +40,16 @@ DECOY_PATTERNS = (
     "inactive_V.smi",
     "decoy.smi",
     "decoys.smi",
+    "*decoy*.smi",
     "inactive.sdf",
     "inactives.sdf",
     "decoys.sdf",
+    "*decoy*.sdf",
     "decoys_final.sdf",
     "inactive.sdf.gz",
     "inactives.sdf.gz",
     "decoys.sdf.gz",
+    "*decoy*.sdf.gz",
     "decoys_final.sdf.gz",
 )
 
@@ -79,13 +82,19 @@ def find_all(root: Path, patterns: tuple[str, ...]) -> list[Path]:
     return unique
 
 
-def discover_targets(source_dir: Path) -> list[Path]:
+def discover_targets(source_dir: Path, *, query_from_first_active: bool = False) -> list[Path]:
     targets = []
     for path in sorted(p for p in source_dir.rglob("*") if p.is_dir()):
-        if find_first(path, QUERY_PATTERNS) and find_all(path, ACTIVE_PATTERNS) and find_all(path, DECOY_PATTERNS):
+        has_query = find_first(path, QUERY_PATTERNS) is not None
+        has_actives = bool(find_all(path, ACTIVE_PATTERNS))
+        has_decoys = bool(find_all(path, DECOY_PATTERNS))
+        if (has_query or query_from_first_active) and has_actives and has_decoys:
             targets.append(path)
-    if source_dir not in targets and find_first(source_dir, QUERY_PATTERNS):
-        if find_all(source_dir, ACTIVE_PATTERNS) and find_all(source_dir, DECOY_PATTERNS):
+    if source_dir not in targets:
+        has_query = find_first(source_dir, QUERY_PATTERNS) is not None
+        has_actives = bool(find_all(source_dir, ACTIVE_PATTERNS))
+        has_decoys = bool(find_all(source_dir, DECOY_PATTERNS))
+        if (has_query or query_from_first_active) and has_actives and has_decoys:
             targets.append(source_dir)
     return sorted(set(targets), key=lambda p: str(p.relative_to(source_dir)))
 
@@ -198,6 +207,15 @@ def copy_query_ligand(target_dir: Path, output_dir: Path) -> Path:
     return destination
 
 
+def use_first_active_as_query(output_dir: Path) -> None:
+    active_files = sorted((output_dir / "actives_sdf").glob("*.sdf"))
+    if not active_files:
+        raise FileNotFoundError(f"Cannot create query ligand because no active SDF files were written in {output_dir}")
+    first_active = active_files[0]
+    shutil.copy2(first_active, output_dir / "crystal_ligand.sdf")
+    first_active.unlink()
+
+
 def prepare_target(
     source_root: Path,
     target_dir: Path,
@@ -205,6 +223,7 @@ def prepare_target(
     *,
     active_limit: int | None = None,
     decoy_limit: int | None = None,
+    query_from_first_active: bool = False,
 ) -> tuple[str, int, int]:
     target_name = target_dir.name
     if target_name.lower() in {"actives", "decoys", "inactive", "inactives"}:
@@ -212,7 +231,6 @@ def prepare_target(
     output_dir = output_root / target_name
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    copy_query_ligand(target_dir, output_dir)
     active_files = find_all(target_dir, ACTIVE_PATTERNS)
     decoy_files = find_all(target_dir, DECOY_PATTERNS)
     if not active_files or not decoy_files:
@@ -221,6 +239,13 @@ def prepare_target(
 
     active_count = prepare_molecule_files(active_files, output_dir / "actives_sdf", "active", limit=active_limit)
     decoy_count = prepare_molecule_files(decoy_files, output_dir / "decoys_sdf", "decoy", limit=decoy_limit)
+    if find_first(target_dir, QUERY_PATTERNS) is not None:
+        copy_query_ligand(target_dir, output_dir)
+    elif query_from_first_active:
+        use_first_active_as_query(output_dir)
+        active_count -= 1
+    else:
+        raise FileNotFoundError(f"No query ligand found in {target_dir}")
     return target_name, active_count, decoy_count
 
 
@@ -230,12 +255,18 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--active-limit", type=int)
     parser.add_argument("--decoy-limit", type=int)
+    parser.add_argument(
+        "--query-from-first-active",
+        action="store_true",
+        help="Use the first generated active SDF as crystal_ligand.sdf when no query ligand is provided.",
+    )
     args = parser.parse_args()
 
-    targets = discover_targets(args.source_dir)
+    targets = discover_targets(args.source_dir, query_from_first_active=args.query_from_first_active)
     if not targets:
         raise RuntimeError(
-            f"No targets found under {args.source_dir}. Expected a query ligand plus active/inactive SMI or SDF files."
+            f"No targets found under {args.source_dir}. Expected active/inactive SMI or SDF files"
+            f"{' plus a query ligand' if not args.query_from_first_active else ''}."
         )
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -246,6 +277,7 @@ def main() -> None:
             args.output_dir,
             active_limit=args.active_limit,
             decoy_limit=args.decoy_limit,
+            query_from_first_active=args.query_from_first_active,
         )
         print(f"{name}: {active_count} actives, {decoy_count} decoys")
 

@@ -14,6 +14,10 @@ download_file() {
   local url="$1"
   local output="$2"
 
+  if [[ "$url" =~ ^\[(.*)\]\((.*)\)$ ]]; then
+    url="${BASH_REMATCH[2]}"
+  fi
+
   mkdir -p "$(dirname "$output")"
   if command -v curl >/dev/null 2>&1; then
     curl -L "$url" -o "$output"
@@ -78,9 +82,16 @@ download_screening_dataset() {
   download_file "$dataset_url" "$archive_path"
   extract_archive "$archive_path" "$extract_dir"
 
-  python scripts/prepare_screening_dataset.py \
-    --source-dir "$extract_dir" \
-    --output-dir "$output_dir"
+  if [[ "$dataset_name" == "DEKOIS2" ]]; then
+    python scripts/prepare_screening_dataset.py \
+      --source-dir "$extract_dir" \
+      --output-dir "$output_dir" \
+      --query-from-first-active
+  else
+    python scripts/prepare_screening_dataset.py \
+      --source-dir "$extract_dir" \
+      --output-dir "$output_dir"
+  fi
 }
 
 download_lit_pcba() {
