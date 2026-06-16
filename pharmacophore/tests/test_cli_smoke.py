@@ -39,6 +39,23 @@ from pharmacophore.PharmacoMatch import screening as pharmacomatch_screening
 from pharmacophore import run_all_screening
 
 
+class FakeTensor:
+    def __init__(self, values):
+        self.values = values
+
+    def __neg__(self):
+        return FakeTensor([-value for value in self.values])
+
+    def detach(self):
+        return self
+
+    def cpu(self):
+        return self
+
+    def tolist(self):
+        return self.values
+
+
 class PipelineWrapperTests(unittest.TestCase):
     def test_equipharm_wrapper_sets_expected_defaults(self):
         with patch.object(equipharm_screening, "screen_actives_decoys") as run:
@@ -236,6 +253,80 @@ class PipelineWrapperTests(unittest.TestCase):
         rows = write_outputs.call_args.args[1]
         self.assertEqual(rows[0]["pipeline"], "PharmacoMatch")
         self.assertEqual(rows[0]["score"], 0.75)
+
+    def test_pharmacomatch_wrapper_fails_when_all_candidates_fail(self):
+        candidates = [(Path("active_0001.sdf"), 1)]
+        with (
+            patch.object(pharmacomatch_screening, "collect_labeled_sdf_files", return_value=candidates),
+            patch.object(pharmacomatch_screening, "run_command", side_effect=FileNotFoundError("pharmacomatch")),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "produced no valid scores"):
+                pharmacomatch_screening.run_pharmacomatch_screening(
+                    command_template="pharmacomatch --query {query_ligand} --candidate {candidate}",
+                    score_json_key="score",
+                    query_ligand="query.mol2",
+                    actives_dir="actives_sdf",
+                    decoys_dir="decoys_sdf",
+                    output_dir="pharmacophore/results/PharmacoMatch/aces",
+                    target_name="aces",
+                )
+
+    def test_official_pharmacomatch_rows_convert_penalty_to_descending_score(self):
+        import pandas as pd
+
+        screener = Mock()
+        screener.active_ligand_score = FakeTensor([3.0, 1.5])
+        screener.inactive_ligand_score = FakeTensor([5.0])
+        metadata = Mock()
+        metadata.active = pd.DataFrame({"name": ["active_a", "active_a", "active_b"]})
+        metadata.inactive = pd.DataFrame({"name": ["decoy_a"]})
+
+        rows = pharmacomatch_screening._rows_from_official_screener(
+            screener=screener,
+            metadata=metadata,
+            target_name="aces",
+            pipeline_name="PharmacoMatch",
+            vs_path=Path("external/PharmacoMatch/data/DUD-E/ACES"),
+        )
+
+        self.assertEqual([row["name"] for row in rows], ["active_a", "active_b", "decoy_a"])
+        self.assertEqual([row["label"] for row in rows], [1, 1, 0])
+        self.assertEqual([row["score"] for row in rows], [-3.0, -1.5, -5.0])
+
+    def test_official_pharmacomatch_missing_inputs_are_clear(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with self.assertRaisesRegex(FileNotFoundError, "Official PharmacoMatch inputs are missing"):
+                pharmacomatch_screening._validate_official_pharmacomatch_inputs(
+                    Path(tmpdir) / "ACES",
+                    Path(tmpdir) / "trained_model.ckpt",
+                )
+
+    def test_prepare_official_pharmacomatch_target_builds_raw_inputs(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            target = root / "data" / "DUD-E" / "aces"
+            (target / "actives_sdf").mkdir(parents=True)
+            (target / "decoys_sdf").mkdir()
+            (target / "query.pml").write_text("query\n", encoding="utf-8")
+            (target / "actives_sdf" / "a.sdf").write_text("active\n$$$$\n", encoding="utf-8")
+            (target / "decoys_sdf" / "d.sdf").write_text("decoy\n$$$$\n", encoding="utf-8")
+            cdpkit_bin = root / "CDPKit" / "Bin"
+            cdpkit_bin.mkdir(parents=True)
+            (cdpkit_bin / "psdcreate").write_text("", encoding="utf-8")
+
+            with patch.object(pharmacomatch_screening, "run_command") as run_command:
+                prepared = pharmacomatch_screening.prepare_official_pharmacomatch_target(
+                    target_dir=target,
+                    prepared_vs_dir=root / "prepared" / "aces",
+                    cdpkit_bin=cdpkit_bin,
+                )
+
+            self.assertEqual(prepared, root / "prepared" / "aces")
+            self.assertTrue((prepared / "raw" / "query.pml").exists())
+            self.assertTrue((prepared / "preprocessing" / "actives.sdf").exists())
+            self.assertTrue((prepared / "preprocessing" / "inactives.sdf").exists())
+            self.assertEqual(run_command.call_count, 2)
+            self.assertEqual(run_command.call_args_list[0].args[0][0], str(cdpkit_bin / "psdcreate"))
 
     def test_command_template_baseline_wrapper_sets_pipeline_name(self):
         with patch.object(pharmit_screening, "run_command_baseline_screening") as run:

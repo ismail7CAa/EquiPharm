@@ -8,9 +8,21 @@ import json
 from pathlib import Path
 
 try:
-    from .screening import run_pharmacomatch_dataset_screening, run_pharmacomatch_screening
+    from .screening import (
+        prepare_official_pharmacomatch_target,
+        run_official_pharmacomatch_dataset_screening,
+        run_official_pharmacomatch_screening,
+        run_pharmacomatch_dataset_screening,
+        run_pharmacomatch_screening,
+    )
 except ImportError:
-    from screening import run_pharmacomatch_dataset_screening, run_pharmacomatch_screening
+    from screening import (
+        prepare_official_pharmacomatch_target,
+        run_official_pharmacomatch_dataset_screening,
+        run_official_pharmacomatch_screening,
+        run_pharmacomatch_dataset_screening,
+        run_pharmacomatch_screening,
+    )
 
 
 def parse_args():
@@ -27,6 +39,18 @@ def parse_args():
     parser.add_argument("--score-regex")
     parser.add_argument("--score-json-key")
     parser.add_argument("--work-dir", type=Path)
+    parser.add_argument("--official-vs-dir", type=Path, help="Official PharmacoMatch preprocessed target directory.")
+    parser.add_argument("--official-dataset-dir", type=Path, help="Official PharmacoMatch dataset root.")
+    parser.add_argument("--prepare-target-dir", type=Path, help="DUD-E-style target to prepare and run with official PharmacoMatch.")
+    parser.add_argument("--prepared-vs-dir", type=Path, help="Where to write/read prepared PharmacoMatch raw files.")
+    parser.add_argument("--cdpkit-bin", type=Path, help="Directory containing CDPKit psdcreate.")
+    parser.add_argument("--query-pharmacophore", type=Path, help="Existing query.pml to use instead of generating one from crystal_ligand.mol2.")
+    parser.add_argument("--force-prepare", action="store_true", help="Regenerate prepared PharmacoMatch inputs.")
+    parser.add_argument("--pharmacomatch-root", type=Path, default=Path("external/PharmacoMatch"))
+    parser.add_argument("--model-path", type=Path)
+    parser.add_argument("--batch-size", type=int)
+    parser.add_argument("--accelerator", default="auto")
+    parser.add_argument("--devices", default="1")
     parser.add_argument("--limit", type=int)
     return parser.parse_args()
 
@@ -58,11 +82,84 @@ def main() -> None:
         "score_regex": args.score_regex,
         "score_json_key": args.score_json_key,
         "work_dir": args.work_dir,
+        "official_vs_dir": args.official_vs_dir,
+        "official_dataset_dir": args.official_dataset_dir,
+        "prepare_target_dir": args.prepare_target_dir,
+        "prepared_vs_dir": args.prepared_vs_dir,
+        "cdpkit_bin": args.cdpkit_bin,
+        "query_pharmacophore": args.query_pharmacophore,
+        "force_prepare": args.force_prepare,
+        "pharmacomatch_root": args.pharmacomatch_root,
+        "model_path": args.model_path,
+        "batch_size": args.batch_size,
+        "accelerator": args.accelerator,
+        "devices": args.devices,
         "limit": args.limit,
     }
     for key, value in overrides.items():
         if value is not None:
             config[key] = str(value) if isinstance(value, Path) else value
+
+    if "prepare_target_dir" in config:
+        required = ["prepare_target_dir", "output_dir"]
+        missing = [key for key in required if key not in config]
+        if missing:
+            raise SystemExit(f"Missing required settings: {', '.join(missing)}")
+        prepared_vs_dir = prepare_official_pharmacomatch_target(
+            target_dir=config["prepare_target_dir"],
+            prepared_vs_dir=config.get("prepared_vs_dir"),
+            pharmacomatch_root=config.get("pharmacomatch_root", "external/PharmacoMatch"),
+            cdpkit_bin=config.get("cdpkit_bin"),
+            query_pharmacophore=config.get("query_pharmacophore"),
+            force=bool(config.get("force_prepare", False)),
+        )
+        metrics = run_official_pharmacomatch_screening(
+            official_vs_dir=prepared_vs_dir,
+            output_dir=config["output_dir"],
+            pharmacomatch_root=config.get("pharmacomatch_root", "external/PharmacoMatch"),
+            model_path=config.get("model_path"),
+            target_name=config.get("target_name"),
+            batch_size=config.get("batch_size"),
+            accelerator=config.get("accelerator", "auto"),
+            devices=_parse_devices(config.get("devices", "1")),
+        )
+        print(json.dumps(metrics, indent=2, sort_keys=True))
+        return
+
+    if "official_dataset_dir" in config:
+        required = ["official_dataset_dir", "output_dir"]
+        missing = [key for key in required if key not in config]
+        if missing:
+            raise SystemExit(f"Missing required settings: {', '.join(missing)}")
+        metrics = run_official_pharmacomatch_dataset_screening(
+            official_dataset_dir=config["official_dataset_dir"],
+            output_dir=config["output_dir"],
+            pharmacomatch_root=config.get("pharmacomatch_root", "external/PharmacoMatch"),
+            model_path=config.get("model_path"),
+            batch_size=config.get("batch_size"),
+            accelerator=config.get("accelerator", "auto"),
+            devices=_parse_devices(config.get("devices", "1")),
+        )
+        print(json.dumps(metrics, indent=2, sort_keys=True))
+        return
+
+    if "official_vs_dir" in config:
+        required = ["official_vs_dir", "output_dir"]
+        missing = [key for key in required if key not in config]
+        if missing:
+            raise SystemExit(f"Missing required settings: {', '.join(missing)}")
+        metrics = run_official_pharmacomatch_screening(
+            official_vs_dir=config["official_vs_dir"],
+            output_dir=config["output_dir"],
+            pharmacomatch_root=config.get("pharmacomatch_root", "external/PharmacoMatch"),
+            model_path=config.get("model_path"),
+            target_name=config.get("target_name"),
+            batch_size=config.get("batch_size"),
+            accelerator=config.get("accelerator", "auto"),
+            devices=_parse_devices(config.get("devices", "1")),
+        )
+        print(json.dumps(metrics, indent=2, sort_keys=True))
+        return
 
     if "dataset_dir" in config:
         required = ["command_template", "dataset_dir", "output_dir"]
@@ -84,6 +181,12 @@ def main() -> None:
 
     metrics = run_pharmacomatch_screening(**config)
     print(json.dumps(metrics, indent=2, sort_keys=True))
+
+
+def _parse_devices(value):
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return value
 
 
 if __name__ == "__main__":
