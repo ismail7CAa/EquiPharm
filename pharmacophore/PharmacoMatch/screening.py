@@ -189,8 +189,7 @@ def prepare_official_pharmacomatch_target(
     preprocessing_path.mkdir(parents=True, exist_ok=True)
     processed_path.mkdir(parents=True, exist_ok=True)
 
-    cdpkit_path = _resolve_cdpkit_bin(cdpkit_bin)
-    psdcreate = cdpkit_path / "psdcreate"
+    psdcreate = _resolve_psdcreate(cdpkit_bin)
     query_output = raw_path / "query.pml"
     actives_sdf = preprocessing_path / "actives.sdf"
     inactives_sdf = preprocessing_path / "inactives.sdf"
@@ -280,25 +279,32 @@ def _validate_official_pharmacomatch_inputs(vs_path: Path, model_path: Path) -> 
         )
 
 
-def _resolve_cdpkit_bin(cdpkit_bin: str | Path | None) -> Path:
+def _resolve_psdcreate(cdpkit_bin: str | Path | None) -> Path | None:
     if cdpkit_bin is not None:
         path = Path(cdpkit_bin)
         if (path / "psdcreate").exists():
-            return path
+            return path / "psdcreate"
         raise FileNotFoundError(f"CDPKit psdcreate not found in: {path}")
 
     vendored_path = Path("external/CDPKit/Bin")
     if (vendored_path / "psdcreate").exists():
-        return vendored_path
+        return vendored_path / "psdcreate"
 
     executable = shutil.which("psdcreate")
     if executable:
-        return Path(executable).parent
-    raise FileNotFoundError(
-        "CDPKit psdcreate was not found. Install CDPKit into `external/CDPKit` "
-        "with `python scripts/install_cdpkit.py`, add psdcreate to PATH, or pass "
-        "`--cdpkit-bin /path/to/CDPKit/Bin`."
-    )
+        return Path(executable)
+
+    try:
+        import CDPL.Chem  # noqa: F401
+        import CDPL.Pharm  # noqa: F401
+    except ImportError as exc:
+        raise FileNotFoundError(
+            "CDPKit psdcreate was not found and Python CDPL is not importable. "
+            "Install CDPKit with `pip install CDPKit`, install binaries into "
+            "`external/CDPKit`, add psdcreate to PATH, or pass "
+            "`--cdpkit-bin /path/to/CDPKit/Bin`."
+        ) from exc
+    return None
 
 
 def _prepare_query_pharmacophore(
@@ -353,10 +359,61 @@ def _combine_sdf_directory(sdf_dir: Path, output_sdf: Path, *, force: bool) -> N
             output.write(b"\n")
 
 
-def _run_psdcreate(psdcreate: Path, input_sdf: Path, output_psd: Path, *, force: bool) -> None:
+def _run_psdcreate(psdcreate: Path | None, input_sdf: Path, output_psd: Path, *, force: bool) -> None:
     if output_psd.exists() and not force:
         return
-    run_command([str(psdcreate), "-i", str(input_sdf), "-o", str(output_psd), "-d"])
+    if psdcreate is not None:
+        run_command([str(psdcreate), "-i", str(input_sdf), "-o", str(output_psd), "-d"])
+        return
+    _create_psd_with_cdpl_python(input_sdf, output_psd)
+
+
+def _create_psd_with_cdpl_python(input_sdf: Path, output_psd: Path) -> None:
+    """Create a pharmacophore screening DB with Python CDPL when psdcreate is unavailable."""
+    try:
+        import CDPL.Chem as Chem
+        import CDPL.Pharm as Pharm
+    except ImportError as exc:
+        raise RuntimeError("Creating PSD files without psdcreate requires Python CDPL.") from exc
+
+    reader = _cdpl_molecule_reader(str(input_sdf), Chem)
+    Chem.setMultiConfImportParameter(reader, False)
+    writer = _cdpl_pharmacophore_writer(str(output_psd), Pharm)
+    generator = Pharm.DefaultPharmacophoreGenerator()
+    molecule = Chem.BasicMolecule()
+    pharmacophore = Pharm.BasicPharmacophore()
+    index = 0
+
+    while reader.read(molecule):
+        index += 1
+        try:
+            Pharm.prepareForPharmacophoreGeneration(molecule)
+            pharmacophore.clear()
+            generator.generate(molecule, pharmacophore)
+            name = Chem.getName(molecule).strip() or f"mol_{index:05d}"
+            Pharm.setName(pharmacophore, name)
+            if pharmacophore.getNumFeatures() == 0:
+                continue
+            if not writer.write(pharmacophore):
+                raise RuntimeError(f"Could not write pharmacophore for molecule {name}.")
+        except Exception as exc:
+            raise RuntimeError(f"Could not create pharmacophore for molecule #{index} in {input_sdf}: {exc}") from exc
+
+
+def _cdpl_molecule_reader(filename: str, Chem):
+    suffix = Path(filename).suffix.lower().lstrip(".")
+    handler = Chem.MoleculeIOManager.getInputHandlerByFileExtension(suffix)
+    if not handler:
+        raise ValueError(f"Unsupported molecule input format: {filename}")
+    return handler.createReader(filename)
+
+
+def _cdpl_pharmacophore_writer(filename: str, Pharm):
+    suffix = Path(filename).suffix.lower().lstrip(".")
+    handler = Pharm.FeatureContainerIOManager.getOutputHandlerByFileExtension(suffix)
+    if not handler:
+        raise ValueError(f"Unsupported pharmacophore output format: {filename}")
+    return handler.createWriter(filename)
 
 
 def _discover_official_pharmacomatch_targets(dataset_dir: str | Path) -> list[Path]:

@@ -11,6 +11,7 @@ try:
         discover_dude_targets,
         first_sdf_mol,
         find_cdpkit_query,
+        find_query_ligand,
         infer_target_name,
         run_command,
         write_baseline_outputs,
@@ -23,6 +24,7 @@ except ImportError:
         discover_dude_targets,
         first_sdf_mol,
         find_cdpkit_query,
+        find_query_ligand,
         infer_target_name,
         run_command,
         write_baseline_outputs,
@@ -143,7 +145,13 @@ def run_cdpkit_dataset_screening(
 
     for target_dir in discover_dude_targets(dataset_dir):
         target_name = target_dir.name
-        query_path = find_cdpkit_query(Path(query_dir) / target_name if query_dir else target_dir)
+        query_root = Path(query_dir) / target_name if query_dir else target_dir
+        query_path = find_cdpkit_query(query_root)
+        if query_path is None and query_dir is None:
+            try:
+                query_path = ensure_cdpkit_query(target_dir)
+            except Exception:
+                query_path = None
         if query_path is None:
             if skip_missing_queries:
                 metrics_rows.append(
@@ -198,6 +206,74 @@ def run_cdpkit_dataset_screening(
         "n_failed": sum(row.get("status") == "failed" for row in metrics_rows),
         "n_skipped": sum(row.get("status") == "skipped" for row in metrics_rows),
     }
+
+
+def ensure_cdpkit_query(target_dir: str | Path, *, query_pharmacophore: str | Path | None = None) -> Path:
+    """Return an existing CDPKit query or generate query.pml from the target ligand."""
+    if query_pharmacophore is not None:
+        return Path(query_pharmacophore)
+
+    target_path = Path(target_dir)
+    query_path = find_cdpkit_query(target_path)
+    if query_path is not None:
+        return query_path
+
+    ligand_path = find_query_ligand(target_path)
+    if ligand_path is None:
+        raise FileNotFoundError(
+            f"No CDPKit query pharmacophore or query ligand found in {target_path}."
+        )
+
+    generated_query = target_path / "query.pml"
+    if not generated_query.exists():
+        create_ligand_query_pharmacophore(ligand_path, generated_query)
+    return generated_query
+
+
+def create_ligand_query_pharmacophore(ligand_path: str | Path, output_path: str | Path) -> Path:
+    """Generate a ligand pharmacophore query with Python CDPL."""
+    try:
+        import CDPL.Chem as Chem
+        import CDPL.Pharm as Pharm
+    except ImportError as exc:
+        raise RuntimeError("Generating CDPKit query.pml requires Python CDPL. Install it with `pip install CDPKit`.") from exc
+
+    ligand_path = Path(ligand_path)
+    output_path = Path(output_path)
+    reader = cdpl_molecule_reader(str(ligand_path), Chem)
+    Chem.setMultiConfImportParameter(reader, False)
+    writer = cdpl_pharmacophore_writer(str(output_path), Pharm)
+    molecule = Chem.BasicMolecule()
+    pharmacophore = Pharm.BasicPharmacophore()
+    generator = Pharm.DefaultPharmacophoreGenerator()
+
+    if not reader.read(molecule):
+        raise ValueError(f"No readable molecule found in {ligand_path}")
+    Pharm.prepareForPharmacophoreGeneration(molecule)
+    generator.generate(molecule, pharmacophore)
+    name = Chem.getName(molecule).strip() or ligand_path.stem
+    Pharm.setName(pharmacophore, name)
+    if pharmacophore.getNumFeatures() == 0:
+        raise ValueError(f"Generated empty pharmacophore from {ligand_path}")
+    if not writer.write(pharmacophore):
+        raise RuntimeError(f"Could not write generated query pharmacophore to {output_path}")
+    return output_path
+
+
+def cdpl_molecule_reader(filename: str, Chem):
+    suffix = Path(filename).suffix.lower().lstrip(".")
+    handler = Chem.MoleculeIOManager.getInputHandlerByFileExtension(suffix)
+    if not handler:
+        raise ValueError(f"Unsupported molecule input format: {filename}")
+    return handler.createReader(filename)
+
+
+def cdpl_pharmacophore_writer(filename: str, Pharm):
+    suffix = Path(filename).suffix.lower().lstrip(".")
+    handler = Pharm.FeatureContainerIOManager.getOutputHandlerByFileExtension(suffix)
+    if not handler:
+        raise ValueError(f"Unsupported pharmacophore output format: {filename}")
+    return handler.createWriter(filename)
 
 
 def write_combined_sdf(candidates: list[tuple[Path, int]], output_path: Path) -> None:

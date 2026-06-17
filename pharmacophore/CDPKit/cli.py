@@ -8,9 +8,9 @@ import json
 from pathlib import Path
 
 try:
-    from .screening import run_cdpkit_dataset_screening, run_cdpkit_screening
+    from .screening import ensure_cdpkit_query, run_cdpkit_dataset_screening, run_cdpkit_screening
 except ImportError:
-    from screening import run_cdpkit_dataset_screening, run_cdpkit_screening
+    from screening import ensure_cdpkit_query, run_cdpkit_dataset_screening, run_cdpkit_screening
 
 
 def parse_args():
@@ -48,11 +48,7 @@ def main() -> None:
         config["actives_dir"] = str(args.target_dir / "actives_sdf")
         config["decoys_dir"] = str(args.target_dir / "decoys_sdf")
         if "query_pharmacophore" not in config:
-            for query_name in ("query.cdf", "query.pml", "query.psd", "crystal_ligand.cdf", "crystal_ligand.pml"):
-                query_path = args.target_dir / query_name
-                if query_path.exists():
-                    config["query_pharmacophore"] = str(query_path)
-                    break
+            config["query_pharmacophore"] = str(ensure_cdpkit_query(args.target_dir))
 
     overrides = {
         "dataset_dir": args.dataset_dir,

@@ -12,14 +12,13 @@ data/DUD-E/<target>/
   decoys_sdf/
 ```
 
-CDPKit additionally needs a pharmacophore query file supported by `psdscreen`: `.cdf`, `.pml`, or `.psd`. When `--target-dir` is used, the CLI will look for `query.cdf`, `query.pml`, `query.psd`, `crystal_ligand.cdf`, or `crystal_ligand.pml` inside that target directory.
+CDPKit additionally needs a pharmacophore query file supported by `psdscreen`: `.cdf`, `.pml`, or `.psd`. When `--target-dir` is used, the CLI will look for `query.cdf`, `query.pml`, `query.psd`, `crystal_ligand.cdf`, or `crystal_ligand.pml` inside that target directory. If none exists, it generates `query.pml` from `crystal_ligand.mol2` or `crystal_ligand.sdf` using the Python CDPL API.
 
 Example:
 
 ```bash
 python -m pharmacophore.CDPKit.cli \
   --target-dir data/DUD-E/<target> \
-  --query-pharmacophore data/DUD-E/<target>/query.cdf \
   --output-dir pharmacophore/results/CDPKit/<target>
 ```
 

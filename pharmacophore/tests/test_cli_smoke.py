@@ -348,6 +348,29 @@ class PipelineWrapperTests(unittest.TestCase):
             self.assertEqual(run_command.call_count, 2)
             self.assertEqual(run_command.call_args_list[0].args[0][0], str(cdpkit_bin / "psdcreate"))
 
+    def test_prepare_official_pharmacomatch_target_falls_back_to_python_cdpl(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            target = root / "data" / "DUD-E" / "aces"
+            (target / "actives_sdf").mkdir(parents=True)
+            (target / "decoys_sdf").mkdir()
+            (target / "query.pml").write_text("query\n", encoding="utf-8")
+            (target / "actives_sdf" / "a.sdf").write_text("active\n$$$$\n", encoding="utf-8")
+            (target / "decoys_sdf" / "d.sdf").write_text("decoy\n$$$$\n", encoding="utf-8")
+
+            with (
+                patch.object(pharmacomatch_screening, "_resolve_psdcreate", return_value=None),
+                patch.object(pharmacomatch_screening, "_create_psd_with_cdpl_python") as create_psd,
+            ):
+                prepared = pharmacomatch_screening.prepare_official_pharmacomatch_target(
+                    target_dir=target,
+                    prepared_vs_dir=root / "prepared" / "aces",
+                )
+
+            self.assertEqual(prepared, root / "prepared" / "aces")
+            self.assertEqual(create_psd.call_count, 2)
+            self.assertEqual(create_psd.call_args_list[0].args[1], prepared / "raw" / "actives.psd")
+
     def test_command_template_baseline_wrapper_sets_pipeline_name(self):
         with patch.object(pharmit_screening, "run_command_baseline_screening") as run:
             run.return_value = {"roc_auc": 1.0}
@@ -512,6 +535,32 @@ class CliConfigTests(unittest.TestCase):
         kwargs = run.call_args.kwargs
         self.assertEqual(kwargs["target_name"], "aces")
         self.assertEqual(kwargs["limit"], 5)
+
+    def test_cdpkit_cli_generates_query_from_target_dir_when_missing(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target_dir = Path(tmpdir) / "aces"
+            (target_dir / "actives_sdf").mkdir(parents=True)
+            (target_dir / "decoys_sdf").mkdir()
+            (target_dir / "crystal_ligand.mol2").write_text("@<TRIPOS>MOLECULE\n", encoding="utf-8")
+            generated_query = target_dir / "query.pml"
+            argv = [
+                "cli",
+                "--target-dir",
+                str(target_dir),
+                "--output-dir",
+                "pharmacophore/results/CDPKit/aces",
+            ]
+            with (
+                patch.object(sys, "argv", argv),
+                patch.object(sys, "stdout", StringIO()),
+                patch.object(cdpkit_cli, "ensure_cdpkit_query", return_value=generated_query) as ensure_query,
+                patch.object(cdpkit_cli, "run_cdpkit_screening") as run,
+            ):
+                run.return_value = {"pipeline": "CDPKit", "target": "aces"}
+                cdpkit_cli.main()
+
+        self.assertEqual(ensure_query.call_args.args[0], target_dir)
+        self.assertEqual(run.call_args.kwargs["query_pharmacophore"], str(generated_query))
 
     def test_command_template_cli_reads_config_without_running_external_tool(self):
         config = {
