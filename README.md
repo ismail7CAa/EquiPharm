@@ -76,8 +76,9 @@ This stage provides a controlled comparison of model families and produces check
 The pharmacophore pipeline applies the selected 3D representation approach to virtual screening on DUD-E targets. It contains maintained screening workflows and external baseline adapters:
 
 - `EquiPharm`: an Equiformer-based workflow that attaches RDKit pharmacophore features to molecular graphs before encoding.
-- `EquiPharm_Hungarian`: a copy of EquiPharm that matches feature-level query/candidate similarity matrices with Hungarian assignment, then ranks by negative average matched-feature distance.
-- `EquiPharm_Hungarian_v2`: the same Hungarian feature matching, then ranks by negative average internal pharmacophore-geometry distance error.
+- `EquiPharm_Hungarian`: embedding-space Hungarian assignment ranked by negative average Euclidean distance between matched feature embeddings.
+- `EquiPharm_Hungarian_v2`: embedding-space Hungarian assignment ranked by negative average pairwise Euclidean geometry-distance error in embedding space.
+- `EquiPharm_Hungarian_3D`: Hungarian assignment directly on 3D pharmacophore feature-center distances, then ranks by negative average pairwise 3D geometry-distance error.
 - `EquiPharm_Hungarian_Cosine`: Hungarian feature matching ranked by mean matched-pair embedding cosine similarity.
 - `EquiPharm_Hungarian_Cosine_v2`: Hungarian feature matching ranked by internal embedding cosine-geometry preservation.
 - `Equiformer_with_optimization`: a baseline Equiformer screening workflow with the same torsion optimization and active/decoy evaluation flow, but without explicit pharmacophore feature attachment.
@@ -98,6 +99,7 @@ pharmacophore/
   EquiPharm/                       # Pharmacophore-feature-aware screening pipeline
   EquiPharm_Hungarian/             # Feature-level Hungarian matching pipeline
   EquiPharm_Hungarian_v2/          # Spatial geometry Hungarian matching pipeline
+  EquiPharm_Hungarian_3D/          # 3D feature-center Hungarian matching pipeline
   EquiPharm_Hungarian_Cosine/      # Matched cosine Hungarian matching pipeline
   EquiPharm_Hungarian_Cosine_v2/   # Cosine geometry Hungarian matching pipeline
   CDPKit/                          # CDPKit external baseline adapter

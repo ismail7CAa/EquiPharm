@@ -14,6 +14,7 @@ try:
     from .DiscoveryStudio.screening import run_discovery_studio_screening
     from .EquiPharm.screening import run_equipharm_screening
     from .EquiPharm_Hungarian.screening import run_equipharm_hungarian_screening
+    from .EquiPharm_Hungarian_3D.screening import run_equipharm_hungarian_3d_screening
     from .EquiPharm_Hungarian_Cosine.screening import run_equipharm_hungarian_cosine_screening
     from .EquiPharm_Hungarian_Cosine_v2.screening import run_equipharm_hungarian_cosine_v2_screening
     from .EquiPharm_Hungarian_v2.screening import run_equipharm_hungarian_v2_screening
@@ -27,6 +28,7 @@ except ImportError:
     from pharmacophore.DiscoveryStudio.screening import run_discovery_studio_screening
     from pharmacophore.EquiPharm.screening import run_equipharm_screening
     from pharmacophore.EquiPharm_Hungarian.screening import run_equipharm_hungarian_screening
+    from pharmacophore.EquiPharm_Hungarian_3D.screening import run_equipharm_hungarian_3d_screening
     from pharmacophore.EquiPharm_Hungarian_Cosine.screening import run_equipharm_hungarian_cosine_screening
     from pharmacophore.EquiPharm_Hungarian_Cosine_v2.screening import run_equipharm_hungarian_cosine_v2_screening
     from pharmacophore.EquiPharm_Hungarian_v2.screening import run_equipharm_hungarian_v2_screening
@@ -47,6 +49,7 @@ MODEL_PIPELINES = (
     "EquiPharm",
     "EquiPharm_Hungarian",
     "EquiPharm_Hungarian_v2",
+    "EquiPharm_Hungarian_3D",
     "EquiPharm_Hungarian_Cosine",
     "EquiPharm_Hungarian_Cosine_v2",
 )
@@ -248,6 +251,8 @@ def run_one_pipeline(args, pipeline: str, target_dir: Path, output_root: Path) -
         return run_equipharm_hungarian_screening(**model_kwargs)
     if pipeline == "EquiPharm_Hungarian_v2":
         return run_equipharm_hungarian_v2_screening(**model_kwargs)
+    if pipeline == "EquiPharm_Hungarian_3D":
+        return run_equipharm_hungarian_3d_screening(**model_kwargs)
     if pipeline == "EquiPharm_Hungarian_Cosine":
         return run_equipharm_hungarian_cosine_screening(**model_kwargs)
     if pipeline == "EquiPharm_Hungarian_Cosine_v2":

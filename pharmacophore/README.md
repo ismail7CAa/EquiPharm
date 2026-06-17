@@ -44,6 +44,7 @@ Folder:
 ```text
 pharmacophore/EquiPharm_Hungarian/
 pharmacophore/EquiPharm_Hungarian_v2/
+pharmacophore/EquiPharm_Hungarian_3D/
 pharmacophore/EquiPharm_Hungarian_Cosine/
 pharmacophore/EquiPharm_Hungarian_Cosine_v2/
 ```
@@ -53,8 +54,9 @@ This is a copy of EquiPharm that keeps the extracted RDKit pharmacophore feature
 `EquiPharm_Hungarian` uses hard one-to-one Hungarian assignment through the shared encoder module `benchmarking.Methods.equiformer_encoder_matching`.
 The matching cost matrix is constrained by pharmacophore family: donor-to-donor, acceptor-to-acceptor, aromatic-to-aromatic, and related same-family matches are allowed, while incompatible pairs are assigned `Inf` and cannot be selected.
 
-After matching, `EquiPharm_Hungarian` uses `score = -mean(d_i)`, where `d_i` is the 3D distance between a matched query pharmacophore feature and candidate pharmacophore feature.
-`EquiPharm_Hungarian_v2` uses `score = -mean(|d_g - d_g'|)`, where `d_g` is the distance between two matched query features and `d_g'` is the distance between their corresponding candidate features.
+After matching, `EquiPharm_Hungarian` uses `score = -mean(d_i)`, where `d_i` is the Euclidean distance between matched query and candidate feature embeddings.
+`EquiPharm_Hungarian_v2` uses `score = -mean(|d_q - d_c|)`, where `d_q` is the Euclidean distance between two matched query feature embeddings and `d_c` is the Euclidean distance between their corresponding candidate feature embeddings.
+`EquiPharm_Hungarian_3D` uses Hungarian assignment directly on 3D pharmacophore feature-center distances, then uses `score = -mean(|d_q - d_c|)` with Euclidean distances in 3D coordinate space.
 `EquiPharm_Hungarian_Cosine` uses the mean cosine similarity of matched query-candidate feature embeddings.
 `EquiPharm_Hungarian_Cosine_v2` uses `score = -mean(|d_g - d_g'|)`, where `d_g` and `d_g'` are internal cosine distances between matched query and candidate embedding pairs.
 

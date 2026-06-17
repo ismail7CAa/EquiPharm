@@ -182,6 +182,135 @@ class ScreeningMetricsTests(unittest.TestCase):
         self.assertEqual([match["feature_distance"] for match in match_details], [1.0, 2.0])
         self.assertEqual([match["status"] for match in match_details], ["matched", "matched"])
 
+    def test_embedding_distance_score_uses_negative_average_matched_embedding_distance(self):
+        if torch is None:
+            self.skipTest("torch is not installed")
+        query = torch.tensor(
+            [
+                [0.0, 0.0],
+                [0.0, 2.0],
+            ],
+            dtype=torch.float32,
+        )
+        candidate = torch.tensor(
+            [
+                [0.0, 1.0],
+                [0.0, 4.0],
+            ],
+            dtype=torch.float32,
+        )
+        metadata = [{"family": "Donor"}, {"family": "Acceptor"}]
+
+        score, _, match_details, components = matching_score(
+            query,
+            candidate,
+            query_metadata=metadata,
+            candidate_metadata=metadata,
+            method="hungarian_euclidean",
+            score_mode="embedding_distance",
+        )
+
+        self.assertAlmostEqual(score, -1.5, places=6)
+        self.assertAlmostEqual(components["average_embedding_distance"], 1.5, places=6)
+        self.assertAlmostEqual(components["embedding_distance_score"], -1.5, places=6)
+        self.assertEqual(components["matched_embedding_distance_count"], 2)
+        self.assertEqual([match["status"] for match in match_details], ["matched", "matched"])
+
+    def test_embedding_geometry_distance_score_compares_internal_embedding_distances(self):
+        if torch is None:
+            self.skipTest("torch is not installed")
+        query = torch.tensor(
+            [
+                [0.0, 0.0],
+                [0.0, 2.0],
+            ],
+            dtype=torch.float32,
+        )
+        candidate = torch.tensor(
+            [
+                [0.0, 1.0],
+                [0.0, 4.0],
+            ],
+            dtype=torch.float32,
+        )
+        metadata = [{"family": "Donor"}, {"family": "Acceptor"}]
+
+        score, _, match_details, components = matching_score(
+            query,
+            candidate,
+            query_metadata=metadata,
+            candidate_metadata=metadata,
+            method="hungarian_euclidean",
+            score_mode="embedding_geometry_distance",
+        )
+
+        self.assertAlmostEqual(score, -1.0, places=6)
+        self.assertAlmostEqual(components["average_embedding_geometry_delta"], 1.0, places=6)
+        self.assertAlmostEqual(components["embedding_geometry_distance_score"], -1.0, places=6)
+        self.assertEqual(components["embedding_geometry_pair_count"], 1)
+        self.assertEqual([match["status"] for match in match_details], ["matched", "matched"])
+
+    def test_hungarian_euclidean_assigns_by_embedding_distance(self):
+        if torch is None:
+            self.skipTest("torch is not installed")
+        query = torch.tensor([[1.0, 0.0]], dtype=torch.float32)
+        candidate = torch.tensor(
+            [
+                [2.0, 0.0],
+                [0.9, 0.1],
+            ],
+            dtype=torch.float32,
+        )
+        metadata = [{"family": "Donor"}]
+        candidate_metadata = [{"family": "Donor"}, {"family": "Donor"}]
+
+        score, similarity, match_details, components = matching_score(
+            query,
+            candidate,
+            query_metadata=metadata,
+            candidate_metadata=candidate_metadata,
+            method="hungarian_euclidean",
+            score_mode="embedding_distance",
+        )
+
+        self.assertEqual(match_details[0]["candidate_index"], 1)
+        self.assertAlmostEqual(float(similarity[0, 0].item()), -1.0, places=6)
+        self.assertAlmostEqual(float(similarity[0, 1].item()), -(2 ** 0.5 / 10), places=6)
+        self.assertAlmostEqual(score, -(2 ** 0.5 / 10), places=6)
+
+    def test_hungarian_3d_assigns_by_feature_center_distance(self):
+        if torch is None:
+            self.skipTest("torch is not installed")
+        query = torch.tensor([[1.0, 0.0]], dtype=torch.float32)
+        candidate = torch.tensor(
+            [
+                [1.0, 0.0],
+                [0.0, 1.0],
+            ],
+            dtype=torch.float32,
+        )
+        query_metadata = [{"family": "Donor", "center": (0.0, 0.0, 0.0)}]
+        candidate_metadata = [
+            {"family": "Donor", "center": (10.0, 0.0, 0.0)},
+            {"family": "Donor", "center": (1.0, 0.0, 0.0)},
+        ]
+
+        score, similarity, match_details, components = matching_score(
+            query,
+            candidate,
+            query_metadata=query_metadata,
+            candidate_metadata=candidate_metadata,
+            method="hungarian_3d",
+            score_mode="feature_distance",
+        )
+
+        self.assertEqual(tuple(similarity.shape), (1, 2))
+        self.assertAlmostEqual(float(similarity[0, 0].item()), -10.0, places=6)
+        self.assertAlmostEqual(float(similarity[0, 1].item()), -1.0, places=6)
+        self.assertEqual(match_details[0]["candidate_index"], 1)
+        self.assertAlmostEqual(score, -1.0, places=6)
+        self.assertAlmostEqual(components["average_feature_distance"], 1.0, places=6)
+
     def test_geometry_distance_score_compares_internal_matched_feature_distances(self):
         if torch is None:
             self.skipTest("torch is not installed")

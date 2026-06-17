@@ -23,9 +23,14 @@ STRICT_SCORE_MODE = "strict"
 BALANCED_SCORE_MODE = "balanced"
 FEATURE_DISTANCE_SCORE_MODE = "feature_distance"
 GEOMETRY_DISTANCE_SCORE_MODE = "geometry_distance"
+EMBEDDING_DISTANCE_SCORE_MODE = "embedding_distance"
+EMBEDDING_GEOMETRY_DISTANCE_SCORE_MODE = "embedding_geometry_distance"
 COSINE_SCORE_MODE = "cosine"
 COSINE_GEOMETRY_SCORE_MODE = "cosine_geometry"
 NO_MATCH_DISTANCE = 1_000_000.0
+HUNGARIAN_METHOD = "hungarian"
+HUNGARIAN_EUCLIDEAN_METHOD = "hungarian_euclidean"
+HUNGARIAN_3D_METHOD = "hungarian_3d"
 
 
 def cosine_similarity_matrix(query_features: torch.Tensor, candidate_features: torch.Tensor) -> torch.Tensor:
@@ -36,6 +41,40 @@ def cosine_similarity_matrix(query_features: torch.Tensor, candidate_features: t
     query_norm = F.normalize(query_features, dim=1)
     candidate_norm = F.normalize(candidate_features, dim=1)
     return query_norm @ candidate_norm.transpose(0, 1)
+
+
+def feature_center_distance_similarity_matrix(
+    query_metadata: list[dict],
+    candidate_metadata: list[dict],
+    *,
+    device=None,
+) -> torch.Tensor:
+    """Return negative 3D feature-center distances for Hungarian maximization."""
+    rows = len(query_metadata)
+    cols = len(candidate_metadata)
+    if rows == 0 or cols == 0:
+        return torch.zeros((rows, cols), dtype=torch.float32, device=device)
+
+    similarity = torch.full((rows, cols), -NO_MATCH_DISTANCE, dtype=torch.float32, device=device)
+    for i, query_feature in enumerate(query_metadata):
+        query_center = query_feature.get("center")
+        if query_center is None:
+            continue
+        query_center = torch.as_tensor(query_center, dtype=torch.float32, device=device)
+        for j, candidate_feature in enumerate(candidate_metadata):
+            candidate_center = candidate_feature.get("center")
+            if candidate_center is None:
+                continue
+            candidate_center = torch.as_tensor(candidate_center, dtype=torch.float32, device=device)
+            similarity[i, j] = -torch.linalg.vector_norm(query_center - candidate_center)
+    return similarity
+
+
+def embedding_distance_similarity_matrix(query_features: torch.Tensor, candidate_features: torch.Tensor) -> torch.Tensor:
+    """Return negative embedding-space Euclidean distances for Hungarian maximization."""
+    if query_features.numel() == 0 or candidate_features.numel() == 0:
+        return query_features.new_zeros((query_features.size(0), candidate_features.size(0)))
+    return -torch.cdist(query_features, candidate_features, p=2)
 
 
 def feature_family_compatibility_mask(
@@ -198,11 +237,50 @@ def cosine_score_components(
     }
 
 
+def embedding_distance_score_components(
+    query_features: torch.Tensor,
+    candidate_features: torch.Tensor,
+    assignments: list[tuple[int, int | None]],
+) -> dict:
+    matched = [(row, col) for row, col in assignments if col is not None]
+    matched_distances = [
+        float(torch.linalg.vector_norm(query_features[row] - candidate_features[col]).detach().cpu().item())
+        for row, col in matched
+    ]
+    matched_average = sum(matched_distances) / len(matched_distances) if matched_distances else NO_MATCH_DISTANCE
+
+    geometry_deltas = []
+    for (left_query, left_candidate), (right_query, right_candidate) in itertools.combinations(matched, 2):
+        query_distance = float(
+            torch.linalg.vector_norm(query_features[left_query] - query_features[right_query]).detach().cpu().item()
+        )
+        candidate_distance = float(
+            torch.linalg.vector_norm(candidate_features[left_candidate] - candidate_features[right_candidate]).detach().cpu().item()
+        )
+        geometry_deltas.append(abs(query_distance - candidate_distance))
+
+    geometry_average = sum(geometry_deltas) / len(geometry_deltas) if geometry_deltas else matched_average
+    return {
+        "matched_embedding_distance_sum": float(sum(matched_distances)),
+        "matched_embedding_distance_count": int(len(matched_distances)),
+        "average_embedding_distance": float(matched_average),
+        "embedding_distance_score": float(-matched_average),
+        "embedding_geometry_delta_sum": float(sum(geometry_deltas)),
+        "embedding_geometry_pair_count": int(len(geometry_deltas)),
+        "average_embedding_geometry_delta": float(geometry_average),
+        "embedding_geometry_distance_score": float(-geometry_average),
+    }
+
+
 def select_score(components: dict, score_mode: str) -> float:
     if score_mode == COSINE_SCORE_MODE:
         return float(components["matched_cosine_similarity_score"])
     if score_mode == COSINE_GEOMETRY_SCORE_MODE:
         return float(components["cosine_geometry_score"])
+    if score_mode == EMBEDDING_DISTANCE_SCORE_MODE:
+        return float(components["embedding_distance_score"])
+    if score_mode == EMBEDDING_GEOMETRY_DISTANCE_SCORE_MODE:
+        return float(components["embedding_geometry_distance_score"])
     if score_mode == FEATURE_DISTANCE_SCORE_MODE:
         return float(components["feature_distance_score"])
     if score_mode == GEOMETRY_DISTANCE_SCORE_MODE:
@@ -331,20 +409,38 @@ def matching_score(
     score_mode: str = STRICT_SCORE_MODE,
 ) -> tuple[float, torch.Tensor, list[dict], dict]:
     """Build the similarity matrix and return a score plus selected matches."""
-    similarity = cosine_similarity_matrix(query_features, candidate_features)
-
-    if method != "hungarian":
+    if method == HUNGARIAN_METHOD:
+        similarity = cosine_similarity_matrix(query_features, candidate_features)
+        unmatched_similarity = 0.0
+    elif method == HUNGARIAN_EUCLIDEAN_METHOD:
+        similarity = embedding_distance_similarity_matrix(query_features, candidate_features)
+        unmatched_similarity = -NO_MATCH_DISTANCE
+    elif method == HUNGARIAN_3D_METHOD:
+        if query_metadata is None or candidate_metadata is None:
+            raise ValueError("hungarian_3d matching requires query and candidate feature metadata.")
+        similarity = feature_center_distance_similarity_matrix(
+            query_metadata,
+            candidate_metadata,
+            device=query_features.device,
+        )
+        unmatched_similarity = -NO_MATCH_DISTANCE
+    else:
         raise ValueError(f"Unknown matching method: {method}")
 
     compatibility_mask = None
     if enforce_feature_family and query_metadata is not None and candidate_metadata is not None:
         compatibility_mask = feature_family_compatibility_mask(query_metadata, candidate_metadata).to(similarity.device)
 
-    _, assignments, components = hungarian_matching_score(similarity, compatibility_mask=compatibility_mask)
+    _, assignments, components = hungarian_matching_score(
+        similarity,
+        compatibility_mask=compatibility_mask,
+        unmatched_similarity=unmatched_similarity,
+    )
     match_details = build_match_details(similarity, assignments, query_metadata, candidate_metadata)
     components = dict(components)
     components.update(distance_score_components(match_details))
     components.update(cosine_score_components(query_features, candidate_features, assignments))
+    components.update(embedding_distance_score_components(query_features, candidate_features, assignments))
     components["score_mode"] = score_mode
     score = select_score(components, score_mode)
     return score, similarity, match_details, components
