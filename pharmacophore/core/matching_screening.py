@@ -20,7 +20,7 @@ try:
         rdkit_mol_to_pyg_equiformer,
         read_sdf_mol,
     )
-    from .resume import append_score_row, load_resume_rows
+    from .resume import append_score_row, initialize_score_file, load_resume_rows
     from .screening import import_model_class, infer_target_name
     from .torsion import optimize_torsions
 except ImportError:
@@ -32,7 +32,7 @@ except ImportError:
         rdkit_mol_to_pyg_equiformer,
         read_sdf_mol,
     )
-    from pharmacophore.core.resume import append_score_row, load_resume_rows
+    from pharmacophore.core.resume import append_score_row, initialize_score_file, load_resume_rows
     from pharmacophore.core.screening import import_model_class, infer_target_name
     from pharmacophore.core.torsion import optimize_torsions
 
@@ -170,6 +170,7 @@ def screen_actives_decoys_matching(
         raise RuntimeError("CUDA requested but unavailable. Use a GPU node or pass device='cpu'.")
 
     target_name = target_name or infer_target_name(query_ligand, actives_dir, decoys_dir, output_dir)
+    initialize_score_file(output_dir, matching_score_fieldnames())
 
     model = load_matching_model(
         checkpoint_path=checkpoint_path,
@@ -303,3 +304,51 @@ def screen_actives_decoys_matching(
         target_name=target_name,
         write_named_roc_curve=True,
     )
+
+
+def matching_score_fieldnames() -> list[str]:
+    return [
+        "pipeline",
+        "target",
+        "name",
+        "path",
+        "label",
+        "score",
+        "score_source",
+        "query_feature_count",
+        "candidate_feature_count",
+        "matching_score_mode",
+        "hungarian_score_strict",
+        "hungarian_score_balanced",
+        "feature_distance_score",
+        "geometry_distance_score",
+        "embedding_distance_score",
+        "embedding_geometry_distance_score",
+        "matched_cosine_similarity_score",
+        "cosine_geometry_score",
+        "selected_similarity_total",
+        "matched_feature_count",
+        "matched_feature_distance_sum",
+        "matched_feature_distance_count",
+        "average_feature_distance",
+        "geometry_distance_delta_sum",
+        "geometry_distance_pair_count",
+        "average_geometry_distance_delta",
+        "matched_embedding_distance_sum",
+        "matched_embedding_distance_count",
+        "average_embedding_distance",
+        "embedding_geometry_delta_sum",
+        "embedding_geometry_pair_count",
+        "average_embedding_geometry_delta",
+        "matched_cosine_similarity_sum",
+        "matched_cosine_similarity_count",
+        "cosine_geometry_delta_sum",
+        "cosine_geometry_pair_count",
+        "average_cosine_geometry_delta",
+        "matched_average_similarity",
+        "query_feature_coverage",
+        "candidate_feature_coverage",
+        "matching_details",
+        "torsion_count",
+        "error",
+    ]

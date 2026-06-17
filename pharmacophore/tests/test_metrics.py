@@ -10,7 +10,7 @@ import pandas as pd
 from unittest.mock import patch
 
 from pharmacophore.core.metrics import bedroc, enrichment_factor, write_outputs
-from pharmacophore.core.resume import append_score_row, load_resume_rows
+from pharmacophore.core.resume import append_score_row, initialize_score_file, load_resume_rows
 
 try:
     import torch
@@ -96,6 +96,15 @@ class ScreeningMetricsTests(unittest.TestCase):
 
         self.assertEqual(len(rows), 2)
         self.assertEqual(completed_paths, {"data/DUD-E/aces/actives_sdf/a.sdf"})
+
+    def test_initialize_score_file_writes_header_before_first_candidate(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            score_path = initialize_score_file(tmpdir, ["path", "score"])
+            rows, completed_paths = load_resume_rows(tmpdir)
+
+        self.assertEqual(score_path.name, "scores.csv")
+        self.assertEqual(rows, [])
+        self.assertEqual(completed_paths, set())
 
     def test_hungarian_matching_uses_one_to_one_assignments(self):
         if torch is None:
