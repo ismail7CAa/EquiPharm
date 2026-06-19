@@ -236,14 +236,12 @@ def ensure_cdpkit_query(target_dir: str | Path, *, query_pharmacophore: str | Pa
         return query_path
 
     ligand_path = find_query_ligand(target_path)
-    print("[CDPKIT QUERY LIGAND]", ligand_path)
     if ligand_path is None:
         raise FileNotFoundError(
             f"No CDPKit query pharmacophore or query ligand found in {target_path}."
         )
 
     generated_query = target_path / "query.pml"
-    print("[CDPKIT GENERATED QUERY]", generated_query)
     if not generated_query.exists():
         create_ligand_query_pharmacophore(ligand_path, generated_query)
     return generated_query

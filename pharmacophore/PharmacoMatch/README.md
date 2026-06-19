@@ -4,6 +4,20 @@ Optional command-template adapter for PharmacoMatch-style screening.
 
 The public method is described as a neural 3D pharmacophore/subgraph-matching approach, but projects can expose different scripts, checkpoint names, and output formats. This wrapper therefore does not assume one concrete package API. Instead, it runs a configurable command per candidate molecule and parses one numeric score from JSON or text output.
 
+This folder contains the reusable PharmacoMatch adapter and official-runner integration. The separate CDPKit comparison used around PharmacoMatch is documented as a script-based CDPL alignment workflow, not as the simple `pharmacophore/CDPKit` `psdscreen` wrapper.
+
+For that alignment-style comparison, use:
+
+```text
+scripts/run_cdpkit_pharmacomatch_all_dude.sh
+scripts/run_pharmacomatch_cdpkit_alignment.py
+scripts/eval_pharmacomatch_cdpkit_alignment.py
+```
+
+Those scripts assume the PharmacoMatch repository and generated data are available locally under `external/PharmacoMatch/` on the Linux/Jupyter machine. The `external/` directory is intentionally not committed because it can be large and machine-specific.
+
+See `challenges_and_limitations/00_PharmacoMatch_CDPKit.md` for why `psdscreen` hit output and CDPL alignment scores are not equivalent.
+
 The data layout is the same as EquiPharm:
 
 ```text
