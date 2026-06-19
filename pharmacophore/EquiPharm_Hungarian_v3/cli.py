@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""CLI for the Equiformer Hungarian v3 hybrid matching pipeline."""
+"""CLI for the EquiPharm Hungarian v3 hybrid matching pipeline."""
 
 from __future__ import annotations
 
@@ -8,13 +8,13 @@ import json
 from pathlib import Path
 
 try:
-    from .screening import run_equiformer_hungarian_v3_screening
+    from .screening import run_equipharm_hungarian_v3_screening
 except ImportError:
-    from screening import run_equiformer_hungarian_v3_screening
+    from screening import run_equipharm_hungarian_v3_screening
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Run Equiformer Hungarian v3 matching for any target.")
+    parser = argparse.ArgumentParser(description="Run EquiPharm Hungarian v3 matching for any target.")
     parser.add_argument("--config", type=Path, help="JSON config file.")
     parser.add_argument("--target-dir", type=Path, help="Directory with crystal_ligand.mol2, actives_sdf, decoys_sdf.")
     parser.add_argument("--target-name", help="Protein target name used in metrics and plot titles.")
@@ -70,7 +70,7 @@ def main() -> None:
     if missing:
         raise SystemExit(f"Missing required settings: {', '.join(missing)}")
 
-    metrics = run_equiformer_hungarian_v3_screening(**config)
+    metrics = run_equipharm_hungarian_v3_screening(**config)
     print(json.dumps(metrics, indent=2, sort_keys=True))
 
 

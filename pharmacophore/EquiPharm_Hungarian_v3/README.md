@@ -1,6 +1,6 @@
-# Equiformer Hungarian v3
+# EquiPharm Hungarian v3
 
-Equiformer Hungarian v3 is a hybrid feature-matching variant:
+EquiPharm Hungarian v3 is a hybrid feature-matching variant:
 
 - Hungarian assignment uses Euclidean distance between learned pharmacophore feature embeddings.
 - Final scoring uses 3D geometry preservation from RDKit/PyG pharmacophore feature centers.
@@ -24,18 +24,18 @@ where `d_q` is the 3D Euclidean distance between two matched query feature cente
 ## Run
 
 ```bash
-python -m pharmacophore.Equiformer_hungarian_v3.cli \
+python -m pharmacophore.EquiPharm_Hungarian_v3.cli \
   --target-dir data/DUD-E/<target> \
   --target-name <target> \
   --checkpoint models_checkpt/checkpoint_02-05-26/best_model.pt \
-  --output-dir pharmacophore/results/Equiformer_hungarian_v3/<target>
+  --output-dir pharmacophore/results/EquiPharm_Hungarian_v3/<target>
 ```
 
 Config example:
 
 ```bash
-python -m pharmacophore.Equiformer_hungarian_v3.cli \
-  --config pharmacophore/Equiformer_hungarian_v3/configs/target.example.json
+python -m pharmacophore.EquiPharm_Hungarian_v3.cli \
+  --config pharmacophore/EquiPharm_Hungarian_v3/configs/target.example.json
 ```
 
 Runs resume automatically from `scores.csv`. If the server interrupts screening, rerun the same command with the same `--output-dir`; paths with finite scores are skipped and missing molecules continue.

@@ -78,7 +78,7 @@ The pharmacophore pipeline applies the selected 3D representation approach to vi
 - `EquiPharm`: an Equiformer-based workflow that attaches RDKit pharmacophore features to molecular graphs before encoding.
 - `EquiPharm_Hungarian`: embedding-space Hungarian assignment ranked by negative average Euclidean distance between matched feature embeddings.
 - `EquiPharm_Hungarian_v2`: embedding-space Hungarian assignment ranked by negative average pairwise Euclidean geometry-distance error in embedding space.
-- `Equiformer_hungarian_v3`: Euclidean embedding-space Hungarian assignment ranked by negative average pairwise 3D geometry-distance error.
+- `EquiPharm_Hungarian_v3`: Euclidean embedding-space Hungarian assignment ranked by negative average pairwise 3D geometry-distance error.
 - `EquiPharm_Hungarian_3D`: Hungarian assignment directly on 3D pharmacophore feature-center distances, then ranks by negative average pairwise 3D geometry-distance error.
 - `EquiPharm_Hungarian_Cosine`: Hungarian feature matching ranked by mean matched-pair embedding cosine similarity.
 - `EquiPharm_Hungarian_Cosine_v2`: Hungarian feature matching ranked by internal embedding cosine-geometry preservation.
@@ -100,7 +100,7 @@ pharmacophore/
   EquiPharm/                       # Pharmacophore-feature-aware screening pipeline
   EquiPharm_Hungarian/             # Feature-level Hungarian matching pipeline
   EquiPharm_Hungarian_v2/          # Spatial geometry Hungarian matching pipeline
-  Equiformer_hungarian_v3/         # Embedding-assignment 3D-scoring Hungarian pipeline
+  EquiPharm_Hungarian_v3/         # Embedding-assignment 3D-scoring Hungarian pipeline
   EquiPharm_Hungarian_3D/          # 3D feature-center Hungarian matching pipeline
   EquiPharm_Hungarian_Cosine/      # Matched cosine Hungarian matching pipeline
   EquiPharm_Hungarian_Cosine_v2/   # Cosine geometry Hungarian matching pipeline

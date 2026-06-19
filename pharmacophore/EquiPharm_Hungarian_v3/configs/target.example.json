@@ -3,7 +3,7 @@
   "query_ligand": "data/DUD-E/<target>/crystal_ligand.mol2",
   "actives_dir": "data/DUD-E/<target>/actives_sdf",
   "decoys_dir": "data/DUD-E/<target>/decoys_sdf",
-  "output_dir": "pharmacophore/results/Equiformer_hungarian_v3/<target>",
+  "output_dir": "pharmacophore/results/EquiPharm_Hungarian_v3/<target>",
   "target_name": "<target>",
   "matching_score_mode": "geometry_distance",
   "device": "cuda",
