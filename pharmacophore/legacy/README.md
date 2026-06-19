@@ -1,6 +1,6 @@
 # Legacy Pharmacophore Scripts
 
-This folder keeps exploratory scripts from the notebook-era workflow.
+This folder keeps exploratory scripts from the first-era workflow.
 They are preserved for traceability, but they are not the recommended reproducible entry points.
 
 Use the maintained pipelines instead:

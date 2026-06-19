@@ -1,4 +1,4 @@
-"""Shared utilities for QM9 2D GNN benchmark scripts."""
+"""Shared utilities for QM9 2D/3D GNN benchmark scripts."""
 
 from __future__ import annotations
 
@@ -271,7 +271,7 @@ def load_training_checkpoint(
     scheduler,
     device: torch.device,
 ) -> dict:
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     model.load_state_dict(checkpoint["model_state_dict"])
 
     ema_state = checkpoint.get("model_ema_state_dict")

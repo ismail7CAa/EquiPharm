@@ -1,13 +1,11 @@
 name: equipharm
 channels:
-  - pytorch
   - conda-forge
   - defaults
+
 dependencies:
   - python=3.10
   - pip
-  - pytorch=2.0.*
-  - pytorch-cuda=11.8 
   - rdkit
   - numpy<2
   - pandas
@@ -19,13 +17,21 @@ dependencies:
   - tensorboard
   - jupyterlab
   - ipykernel
+
   - pip:
-      - --find-links=https://data.pyg.org/whl/torch-2.0.0+cu118.html  # for CUDA 11.8
-      - torch-geometric==2.5.1
-      - torch-scatter
-      - torch-sparse
-      - torch-cluster
-      - torch-spline-conv
+      # PyTorch with CUDA 12.8 for Blackwell GPUs
+      - --index-url=https://download.pytorch.org/whl/cu128
+      - torch==2.7.0
+      - torchvision==0.22.0
+      - torchaudio==2.7.0
+
+      # return to normal PyPI for the rest
+      - --extra-index-url=https://pypi.org/simple
+
+      # PyTorch Geometric
+      - torch-geometric
+
+      # Model libraries
       - equiformer-pytorch
       - se3-transformer-pytorch
       - dive-into-graphs
