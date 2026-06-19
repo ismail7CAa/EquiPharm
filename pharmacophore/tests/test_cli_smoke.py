@@ -30,6 +30,8 @@ from pharmacophore.EquiPharm_Hungarian_Cosine_v2 import cli as hungarian_cosine_
 from pharmacophore.EquiPharm_Hungarian_Cosine_v2 import screening as hungarian_cosine_v2_screening
 from pharmacophore.EquiPharm_Hungarian_v2 import cli as hungarian_v2_cli
 from pharmacophore.EquiPharm_Hungarian_v2 import screening as hungarian_v2_screening
+from pharmacophore.Equiformer_hungarian_v3 import cli as hungarian_v3_cli
+from pharmacophore.Equiformer_hungarian_v3 import screening as hungarian_v3_screening
 from pharmacophore.Equiformer_with_optimization import cli as equiformer_cli
 from pharmacophore.Equiformer_with_optimization import screening as equiformer_screening
 from pharmacophore.CDPKit import cli as cdpkit_cli
@@ -127,6 +129,24 @@ class PipelineWrapperTests(unittest.TestCase):
         kwargs = run.call_args.kwargs
         self.assertEqual(kwargs["pipeline_name"], "EquiPharm_Hungarian_3D")
         self.assertEqual(kwargs["matching_method"], "hungarian_3d")
+        self.assertEqual(kwargs["matching_score_mode"], "geometry_distance")
+        self.assertEqual(kwargs["model_module"], "benchmarking.Methods.equiformer_encoder_matching")
+
+    def test_equiformer_hungarian_v3_wrapper_sets_expected_defaults(self):
+        with patch.object(hungarian_v3_screening, "screen_actives_decoys_matching") as run:
+            run.return_value = {"roc_auc": 1.0}
+            result = hungarian_v3_screening.run_equiformer_hungarian_v3_screening(
+                checkpoint_path="checkpoint.pt",
+                query_ligand="query.mol2",
+                actives_dir="actives_sdf",
+                decoys_dir="decoys_sdf",
+                output_dir="pharmacophore/results/Equiformer_hungarian_v3/aces",
+            )
+
+        self.assertEqual(result, {"roc_auc": 1.0})
+        kwargs = run.call_args.kwargs
+        self.assertEqual(kwargs["pipeline_name"], "Equiformer_hungarian_v3")
+        self.assertEqual(kwargs["matching_method"], "hungarian_euclidean")
         self.assertEqual(kwargs["matching_score_mode"], "geometry_distance")
         self.assertEqual(kwargs["model_module"], "benchmarking.Methods.equiformer_encoder_matching")
 

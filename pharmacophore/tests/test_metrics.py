@@ -361,6 +361,47 @@ class ScreeningMetricsTests(unittest.TestCase):
         self.assertEqual(components["geometry_distance_pair_count"], 1)
         self.assertEqual([match["status"] for match in match_details], ["matched", "matched"])
 
+    def test_euclidean_embedding_assignment_can_score_3d_geometry(self):
+        if torch is None:
+            self.skipTest("torch is not installed")
+        query = torch.tensor(
+            [
+                [0.0, 0.0],
+                [10.0, 0.0],
+            ],
+            dtype=torch.float32,
+        )
+        candidate = torch.tensor(
+            [
+                [10.1, 0.0],
+                [0.1, 0.0],
+            ],
+            dtype=torch.float32,
+        )
+        query_metadata = [
+            {"family": "Donor", "center": (0.0, 0.0, 0.0)},
+            {"family": "Acceptor", "center": (0.0, 2.0, 0.0)},
+        ]
+        candidate_metadata = [
+            {"family": "Acceptor", "center": (0.0, 4.0, 0.0)},
+            {"family": "Donor", "center": (0.0, 1.0, 0.0)},
+        ]
+
+        score, _, match_details, components = matching_score(
+            query,
+            candidate,
+            query_metadata=query_metadata,
+            candidate_metadata=candidate_metadata,
+            method="hungarian_euclidean",
+            score_mode="geometry_distance",
+        )
+
+        self.assertEqual([match["candidate_index"] for match in match_details], [1, 0])
+        self.assertAlmostEqual(score, -1.0, places=6)
+        self.assertAlmostEqual(components["geometry_distance_score"], -1.0, places=6)
+        self.assertAlmostEqual(components["average_geometry_distance_delta"], 1.0, places=6)
+        self.assertEqual(components["geometry_distance_pair_count"], 1)
+
     def test_cosine_score_uses_average_matched_embedding_similarity(self):
         if torch is None:
             self.skipTest("torch is not installed")
