@@ -28,6 +28,7 @@ def parse_args():
     parser.add_argument("--psdscreen-bin", default=None)
     parser.add_argument("--query-format")
     parser.add_argument("--num-threads", type=int)
+    parser.add_argument("--max-omitted", type=int, default=None)
     parser.add_argument("--skip-missing-queries", action="store_true")
     parser.add_argument("--limit", type=int)
     return parser.parse_args()
@@ -62,6 +63,7 @@ def main() -> None:
         "psdscreen_bin": args.psdscreen_bin,
         "query_format": args.query_format,
         "num_threads": args.num_threads,
+        "max_omitted": args.max_omitted,
         "skip_missing_queries": args.skip_missing_queries or None,
         "limit": args.limit,
     }

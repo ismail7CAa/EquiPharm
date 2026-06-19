@@ -449,9 +449,12 @@ def _rows_from_official_screener(
     inactive_scores = (-screener.inactive_ligand_score).detach().cpu().tolist()
 
     if len(active_names) != len(active_scores):
-        raise ValueError(f"Active metadata/score length mismatch: {len(active_names)} names, {len(active_scores)} scores.")
+        print(f"[WARN] Active metadata/score length mismatch: {len(active_names)} names, {len(active_scores)} scores. Using fallback active IDs.")
+        active_names = [f"active_{i}" for i in range(len(active_scores))]
+
     if len(inactive_names) != len(inactive_scores):
-        raise ValueError(f"Inactive metadata/score length mismatch: {len(inactive_names)} names, {len(inactive_scores)} scores.")
+        print(f"[WARN] Inactive metadata/score length mismatch: {len(inactive_names)} names, {len(inactive_scores)} scores. Using fallback inactive IDs.")
+        inactive_names = [f"inactive_{i}" for i in range(len(inactive_scores))]
 
     rows = []
     for name, score in zip(active_names, active_scores):

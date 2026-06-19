@@ -53,6 +53,7 @@ def run_cdpkit_screening(
     psdscreen_bin: str = "psdscreen",
     query_format: str | None = None,
     num_threads: int | None = None,
+    max_omitted: int | None = None,
     hit_score: float = 1.0,
     miss_score: float = 0.0,
     score_properties: list[str] | tuple[str, ...] = DEFAULT_SCORE_PROPERTIES,
@@ -108,14 +109,28 @@ def run_cdpkit_screening(
     ]
     if query_format is not None:
         screen_cmd.extend(["-Q", query_format])
+    if max_omitted is not None:
+        screen_cmd.extend(["-M", str(max_omitted)])
     if num_threads is not None:
         screen_cmd.extend(["-t", str(num_threads)])
     run_command(screen_cmd)
 
     scores = parse_hit_scores(hits_sdf, hit_score=hit_score, score_properties=score_properties)
+    
+    # Build score dictionary for every molecule.
+    # CDPKit hits keep their CDPKit score.
+    # Non-hits get miss_score.
+    # A tiny deterministic jitter breaks ties without using active/decoy labels
+    # and without changing the meaningful CDPKit ranking.
+    scored = {}
+    for sdf_path, _label in candidates:
+        name = sdf_path.stem
+        base_score = scores.get(name, miss_score)
+        scored[name] = float(base_score) + deterministic_jitter(name)
+    
     rows = build_rows_from_scores(
         candidates,
-        scores,
+        scored,
         pipeline_name=pipeline_name,
         target_name=target_name,
         default_score=miss_score,
@@ -133,6 +148,7 @@ def run_cdpkit_dataset_screening(
     psdscreen_bin: str = "psdscreen",
     query_format: str | None = None,
     num_threads: int | None = None,
+    max_omitted: int | None = None,
     hit_score: float = 1.0,
     miss_score: float = 0.0,
     score_properties: list[str] | tuple[str, ...] = DEFAULT_SCORE_PROPERTIES,
@@ -180,6 +196,7 @@ def run_cdpkit_dataset_screening(
                 psdscreen_bin=psdscreen_bin,
                 query_format=query_format,
                 num_threads=num_threads,
+                max_omitted=max_omitted,
                 hit_score=hit_score,
                 miss_score=miss_score,
                 score_properties=score_properties,
@@ -219,12 +236,14 @@ def ensure_cdpkit_query(target_dir: str | Path, *, query_pharmacophore: str | Pa
         return query_path
 
     ligand_path = find_query_ligand(target_path)
+    print("[CDPKIT QUERY LIGAND]", ligand_path)
     if ligand_path is None:
         raise FileNotFoundError(
             f"No CDPKit query pharmacophore or query ligand found in {target_path}."
         )
 
     generated_query = target_path / "query.pml"
+    print("[CDPKIT GENERATED QUERY]", generated_query)
     if not generated_query.exists():
         create_ligand_query_pharmacophore(ligand_path, generated_query)
     return generated_query
@@ -297,20 +316,30 @@ def parse_hit_scores(
     hit_score: float,
     score_properties: list[str] | tuple[str, ...],
 ) -> dict[str, float]:
+    from pathlib import Path
     from rdkit import Chem
 
-    if not hits_sdf.exists():
+    hits_sdf = Path(hits_sdf)
+
+    # CDPKit can produce an empty hits file when no molecules match.
+    # RDKit SDMolSupplier can crash or behave badly on a 0-byte SDF.
+    if not hits_sdf.exists() or hits_sdf.stat().st_size == 0:
+        print(f"[WARN] CDPKit produced no hits or empty hits file: {hits_sdf}")
         return {}
 
     scores = {}
     supplier = Chem.SDMolSupplier(str(hits_sdf), sanitize=False, removeHs=False)
+
     for mol in supplier:
         if mol is None:
             continue
+
         name = mol.GetProp("_Name") if mol.HasProp("_Name") else None
         if not name:
             continue
+
         scores[name] = get_score_property(mol, score_properties, default=hit_score)
+
     return scores
 
 
@@ -327,3 +356,11 @@ def get_score_property(
             except ValueError:
                 pass
     return float(default)
+
+    
+def deterministic_jitter(name: str, scale: float = 1e-12) -> float:
+    import hashlib
+
+    digest = hashlib.md5(name.encode("utf-8")).hexdigest()
+    value = int(digest[:12], 16) / float(16**12)
+    return value * scale

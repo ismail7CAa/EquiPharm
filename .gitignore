@@ -63,3 +63,23 @@ venv/
 # =========================
 .DS_Store
 Thumbs.db
+
+# Generated benchmark outputs
+pharmacophore/results/
+pharmacophore/results_*/
+*.log
+*.out
+
+# External local builds / downloaded dependencies
+external/Pharmit/
+external/bitmagic/
+external/OpenPharmaco/
+external/cgicc-*/
+external/*.tar.gz
+external/local/
+
+# Temporary molecules
+ada_mol_*.sdf
+
+# Local copied env/repo folders
+equipharm/

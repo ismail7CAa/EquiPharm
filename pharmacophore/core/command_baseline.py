@@ -71,6 +71,8 @@ def run_command_baseline_screening(
             )
             error = None
         except Exception as exc:
+            print("[COMMAND BASELINE ERROR]", command)
+            print("[COMMAND BASELINE EXCEPTION]", repr(exc))
             score = float("nan")
             error = str(exc)
 
