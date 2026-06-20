@@ -12,6 +12,7 @@ from torch_geometric.data import Batch
 from tqdm import tqdm
 
 try:
+    from .artifacts import initialize_artifacts, save_failure_artifact, save_molecule_artifact, save_query_artifact
     from .metrics import write_outputs
     from .molecule_io import (
         mol2_to_rdkit_mol,
@@ -23,6 +24,7 @@ try:
     from .torsion import optimize_torsions
     from .resume import append_score_row, load_resume_rows
 except ImportError:
+    from pharmacophore.core.artifacts import initialize_artifacts, save_failure_artifact, save_molecule_artifact, save_query_artifact
     from pharmacophore.core.metrics import write_outputs
     from pharmacophore.core.molecule_io import (
         mol2_to_rdkit_mol,
@@ -125,6 +127,28 @@ def cosine_similarity(
     return float(score.squeeze(0).detach().cpu().item())
 
 
+def score_candidate_embedding(
+    model,
+    query_embedding,
+    mol: Chem.Mol,
+    device,
+    *,
+    name: str,
+    idx: int,
+    use_pharmacophore_features: bool,
+) -> tuple[float, torch.Tensor]:
+    embedding = encode_molecule(
+        model,
+        mol,
+        device,
+        name=name,
+        idx=idx,
+        use_pharmacophore_features=use_pharmacophore_features,
+    )
+    score = F.cosine_similarity(query_embedding.to(device), embedding, dim=1)
+    return float(score.squeeze(0).detach().cpu().item()), embedding
+
+
 def screen_actives_decoys(
     *,
     checkpoint_path: str | Path,
@@ -153,6 +177,29 @@ def screen_actives_decoys(
         raise RuntimeError("CUDA requested but unavailable. Use a GPU node or pass device='cpu'.")
 
     target_name = target_name or infer_target_name(query_ligand, actives_dir, decoys_dir, output_dir)
+    initialize_artifacts(
+        output_dir,
+        {
+            "pipeline_name": pipeline_name,
+            "target_name": target_name,
+            "checkpoint_path": str(checkpoint_path),
+            "query_ligand": str(query_ligand),
+            "actives_dir": str(actives_dir),
+            "decoys_dir": str(decoys_dir),
+            "model_module": model_module,
+            "model_class": model_class,
+            "use_pharmacophore_features": use_pharmacophore_features,
+            "device": device,
+            "optimize": optimize,
+            "maxiter": maxiter,
+            "popsize": popsize,
+            "rotatable_only": rotatable_only,
+            "heavy_only": heavy_only,
+            "exclude_rings": exclude_rings,
+            "one_per_bond": one_per_bond,
+            "limit": limit,
+        },
+    )
 
     model = load_model(
         checkpoint_path=checkpoint_path,
@@ -169,6 +216,7 @@ def screen_actives_decoys(
         idx=0,
         use_pharmacophore_features=use_pharmacophore_features,
     )
+    save_query_artifact(output_dir, query_ligand=query_ligand, encoding=query_embedding)
 
     active_files = sorted(Path(actives_dir).glob("*.sdf"))
     decoy_files = sorted(Path(decoys_dir).glob("*.sdf"))
@@ -188,7 +236,7 @@ def screen_actives_decoys(
             mol.SetProp("sdf_path", str(sdf_path))
 
             def objective(candidate_mol):
-                return cosine_similarity(
+                score, _ = score_candidate_embedding(
                     model,
                     query_embedding,
                     candidate_mol,
@@ -197,9 +245,10 @@ def screen_actives_decoys(
                     idx=idx,
                     use_pharmacophore_features=use_pharmacophore_features,
                 )
+                return score
 
             if optimize:
-                _, score, opt_meta = optimize_torsions(
+                optimized_mol, score, opt_meta = optimize_torsions(
                     mol,
                     objective,
                     maxiter=maxiter,
@@ -210,8 +259,25 @@ def screen_actives_decoys(
                     one_per_bond=one_per_bond,
                     seed=idx,
                 )
+                score, candidate_embedding = score_candidate_embedding(
+                    model,
+                    query_embedding,
+                    optimized_mol,
+                    device_obj,
+                    name=mol.GetProp("_Name"),
+                    idx=idx,
+                    use_pharmacophore_features=use_pharmacophore_features,
+                )
             else:
-                score = objective(mol)
+                score, candidate_embedding = score_candidate_embedding(
+                    model,
+                    query_embedding,
+                    mol,
+                    device_obj,
+                    name=mol.GetProp("_Name"),
+                    idx=idx,
+                    use_pharmacophore_features=use_pharmacophore_features,
+                )
                 opt_meta = {"torsion_count": 0, "theta": []}
 
             row = {
@@ -223,6 +289,12 @@ def screen_actives_decoys(
                 "score": score,
                 "torsion_count": opt_meta["torsion_count"],
             }
+            save_molecule_artifact(
+                output_dir,
+                row=row,
+                encoding=candidate_embedding,
+                opt_meta=opt_meta,
+            )
         except Exception as exc:
             row = {
                 "pipeline": pipeline_name,
@@ -234,6 +306,7 @@ def screen_actives_decoys(
                 "torsion_count": 0,
                 "error": str(exc),
             }
+            save_failure_artifact(output_dir, row=row, error=str(exc))
         rows.append(row)
         append_score_row(output_dir, row)
 

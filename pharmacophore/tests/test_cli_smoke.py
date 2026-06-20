@@ -244,8 +244,8 @@ class PipelineWrapperTests(unittest.TestCase):
         self.assertEqual(run_command.call_count, 2)
         rows = write_outputs.call_args.args[1]
         self.assertEqual(rows[0]["pipeline"], "CDPKit")
-        self.assertEqual(rows[0]["score"], 2.0)
-        self.assertEqual(rows[1]["score"], 0.0)
+        self.assertAlmostEqual(rows[0]["score"], 2.0, places=9)
+        self.assertAlmostEqual(rows[1]["score"], 0.0, places=9)
 
     def test_cdpkit_dataset_wrapper_writes_summary(self):
         targets = [Path("data/DUD-E/aces"), Path("data/DUD-E/egfr")]

@@ -373,6 +373,14 @@ pharmacophore/results/<dataset>/
       metrics.json
       screening_performance_summary.csv
       auroc_curve_coordinates.csv
+      analysis_artifacts/
+        run_config.json
+        query.pt
+        molecule_index.jsonl
+        failures.jsonl
+        run_events.jsonl
+        molecules/
+          <molecule_name>.pt
       cosine_similarity_boxplot.png
       roc_curve_actives_vs_decoys.png       # EquiPharm-family pipelines
       <pipeline>_<target>_auroc_curve.png   # EquiPharm and Hungarian variants
@@ -390,6 +398,7 @@ pharmacophore/results/BayesBind/all_screening_metrics.csv
 `metrics.json` and `screening_performance_summary.csv` include AUROC, PR-AUC, EF1%, and BEDROC(alpha=20), plus the pipeline name and protein target name.
 `auroc_curve_coordinates.csv` stores the false-positive-rate, true-positive-rate, and threshold values used to draw the ROC curve.
 For Hungarian variants, `scores.csv` also includes `feature_distance_score`, `geometry_distance_score`, `matched_cosine_similarity_score`, `cosine_geometry_score`, raw component columns, `matched_feature_count`, coverage columns, and `matching_details`, where `matching_details` is JSON describing the selected query-candidate pharmacophore feature matches and unmatched query features.
+EquiPharm-family model runs also write `analysis_artifacts/` for later analysis without rerunning screening. `query.pt` stores the query embedding, each `molecules/<molecule_name>.pt` stores the final scored molecule embedding plus optimization metadata, and Hungarian runs additionally include feature embeddings, feature metadata, match details, and score components. `molecule_index.jsonl` links molecule names, labels, scores, source paths, and artifact files for downstream analyses such as UMAP or error inspection.
 If `--target-name` is omitted, the target is inferred from paths like `data/DUD-E/<target>/...`.
 
 Existing reference plots and CSV exports from the exploratory workflow are kept in:

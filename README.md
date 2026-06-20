@@ -489,11 +489,19 @@ pharmacophore/results/<pipeline>/<target>/
   scores.csv
   ranked_hits.csv
   metrics.json
-  screening_performance_summary.csv
-  auroc_curve_coordinates.csv
-  cosine_similarity_boxplot.png
-  roc_curve_actives_vs_decoys.png       # EquiPharm-family pipelines
-  <pipeline>_<target>_auroc_curve.png   # EquiPharm and Hungarian variants
+      screening_performance_summary.csv
+      auroc_curve_coordinates.csv
+      analysis_artifacts/
+        run_config.json
+        query.pt
+        molecule_index.jsonl
+        failures.jsonl
+        run_events.jsonl
+        molecules/
+          <molecule_name>.pt
+      cosine_similarity_boxplot.png
+      roc_curve_actives_vs_decoys.png       # EquiPharm-family pipelines
+      <pipeline>_<target>_auroc_curve.png   # EquiPharm and Hungarian variants
 ```
 
 The all-method runner also writes:

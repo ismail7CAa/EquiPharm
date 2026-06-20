@@ -12,6 +12,7 @@ from torch_geometric.data import Batch
 from tqdm import tqdm
 
 try:
+    from .artifacts import initialize_artifacts, save_failure_artifact, save_molecule_artifact, save_query_artifact
     from .matching import matching_score
     from .metrics import write_outputs
     from .molecule_io import (
@@ -24,6 +25,7 @@ try:
     from .screening import import_model_class, infer_target_name
     from .torsion import optimize_torsions
 except ImportError:
+    from pharmacophore.core.artifacts import initialize_artifacts, save_failure_artifact, save_molecule_artifact, save_query_artifact
     from pharmacophore.core.matching import matching_score
     from pharmacophore.core.metrics import write_outputs
     from pharmacophore.core.molecule_io import (
@@ -171,6 +173,30 @@ def screen_actives_decoys_matching(
 
     target_name = target_name or infer_target_name(query_ligand, actives_dir, decoys_dir, output_dir)
     initialize_score_file(output_dir, matching_score_fieldnames())
+    initialize_artifacts(
+        output_dir,
+        {
+            "pipeline_name": pipeline_name,
+            "target_name": target_name,
+            "checkpoint_path": str(checkpoint_path),
+            "query_ligand": str(query_ligand),
+            "actives_dir": str(actives_dir),
+            "decoys_dir": str(decoys_dir),
+            "model_module": model_module,
+            "model_class": model_class,
+            "matching_method": matching_method,
+            "matching_score_mode": matching_score_mode,
+            "device": device,
+            "optimize": optimize,
+            "maxiter": maxiter,
+            "popsize": popsize,
+            "rotatable_only": rotatable_only,
+            "heavy_only": heavy_only,
+            "exclude_rings": exclude_rings,
+            "one_per_bond": one_per_bond,
+            "limit": limit,
+        },
+    )
 
     model = load_matching_model(
         checkpoint_path=checkpoint_path,
@@ -180,6 +206,7 @@ def screen_actives_decoys_matching(
     )
     query_mol = read_query_ligand(query_ligand, sanitize=True, keep_hs=False)
     query_encoding = encode_feature_set(model, query_mol, device_obj, name="query_ligand", idx=0)
+    save_query_artifact(output_dir, query_ligand=query_ligand, encoding=query_encoding)
 
     active_files = sorted(Path(actives_dir).glob("*.sdf"))
     decoy_files = sorted(Path(decoys_dir).glob("*.sdf"))
@@ -212,11 +239,11 @@ def screen_actives_decoys_matching(
                     method=matching_method,
                     score_mode=matching_score_mode,
                 )
-                return score, score_source, matrix_shape, match_details, score_components
+                return score, score_source, matrix_shape, match_details, score_components, candidate_encoding
 
             if optimize:
                 def scalar_objective(candidate_mol):
-                    score, _, _, _, _ = objective(candidate_mol)
+                    score, _, _, _, _, _ = objective(candidate_mol)
                     return score
 
                 optimized_mol, score, opt_meta = optimize_torsions(
@@ -230,9 +257,9 @@ def screen_actives_decoys_matching(
                     one_per_bond=one_per_bond,
                     seed=idx,
                 )
-                _, score_source, matrix_shape, match_details, score_components = objective(optimized_mol)
+                _, score_source, matrix_shape, match_details, score_components, candidate_encoding = objective(optimized_mol)
             else:
-                score, score_source, matrix_shape, match_details, score_components = objective(mol)
+                score, score_source, matrix_shape, match_details, score_components, candidate_encoding = objective(mol)
                 opt_meta = {"torsion_count": 0, "theta": []}
 
             row = {
@@ -282,6 +309,14 @@ def screen_actives_decoys_matching(
                 "matching_details": json.dumps(match_details, sort_keys=True),
                 "torsion_count": opt_meta["torsion_count"],
             }
+            save_molecule_artifact(
+                output_dir,
+                row=row,
+                encoding=candidate_encoding,
+                opt_meta=opt_meta,
+                match_details=match_details,
+                score_components=score_components,
+            )
         except Exception as exc:
             row = {
                 "pipeline": pipeline_name,
@@ -293,6 +328,7 @@ def screen_actives_decoys_matching(
                 "torsion_count": 0,
                 "error": str(exc),
             }
+            save_failure_artifact(output_dir, row=row, error=str(exc))
         rows.append(row)
         append_score_row(output_dir, row)
 
