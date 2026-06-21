@@ -1,0 +1,194 @@
+00_Benchmarking
+================
+
+Purpose
+-------
+
+The benchmarking stage was used to compare molecular representation models before
+moving to pharmacophore screening. The idea was to first test whether different
+graph and 3D equivariant architectures can learn meaningful molecular
+representations on QM9, then use the strongest representation family as the
+foundation for the screening pipeline.
+
+
+Dataset
+-------
+
+The benchmark dataset is QM9, downloaded through torch_geometric.datasets.QM9
+into:
+
+data/QM9/
+
+QM9 contains small organic molecules with 3D coordinates and 19 molecular
+property targets. The benchmark code predicts all 19 targets jointly.
+
+The target properties are:
+
+- dipole moment
+- polarizability
+- HOMO, LUMO, and HOMO-LUMO gap
+- electronic spatial extent
+- zero-point vibrational energy
+- thermodynamic energies
+- heat capacity
+- atomization energies
+- rotational constants
+
+
+Preprocessing
+-------------
+
+The raw QM9 targets are first converted into the benchmark units used in the
+experiments. For example, some energy targets are converted from Hartree to eV,
+and polarizability/spatial extent use Angstrom-based units.
+
+After unit conversion, every target is z-score normalized using only the
+training split statistics:
+
+y_norm = (y - mean_train) / std_train
+
+This is done independently for each of the 19 QM9 targets.
+
+The validation and test targets are normalized using the same training-set mean
+and standard deviation. This avoids leaking validation/test information into
+the preprocessing.
+
+
+Denormalization and Metrics
+---------------------------
+
+The model is trained on normalized targets, but the reported MAE is computed
+after denormalization:
+
+y_pred = y_pred_norm * std_train + mean_train
+
+This means the final validation and test MAE values are reported in the
+original benchmark units, not in normalized z-score units.
+
+The best model is selected based on the mean validation MAE across all 19
+targets. The corresponding test MAE at the best validation epoch is then stored
+for reporting.
+
+
+Data Splits
+-----------
+
+The dataset is randomly permuted with a split seed.
+
+Default split sizes:
+
+- train: 110000 molecules
+- validation: 10000 molecules
+- test: remaining QM9 molecules
+
+For repeated experiments, the benchmark scripts can run multiple seeds. Each
+seed uses its own train/split seed and writes to:
+
+runs/<model>/seed_<seed>/
+
+The cross-seed summary is written to:
+
+runs/<model>/seed_summary.csv
+
+
+Training Artifacts
+------------------
+
+Each benchmark run writes:
+
+runs/<model>/
+  config.json
+  best_val_test_mae.csv
+  checkpoints/
+    last_checkpoint.pt
+    best_model.pt
+  logs/
+
+The recovery checkpoint last_checkpoint.pt is saved after every completed epoch.
+If training is interrupted, rerunning the same command with the same output
+directory resumes automatically unless auto-resume is disabled.
+
+
+Models Compared
+---------------
+
+The benchmark includes classical 2D graph neural network baselines:
+
+- GCN
+- GAT
+- GraphSAGE
+- GIN
+
+It also includes 3D/geometric models:
+
+- SphereNet
+- SE(3)-Transformer
+- Equiformer
+- Equiformer point-cloud variant
+- Equiformer adjacency-aware variant
+
+
+Equiformer Point-Cloud Variant
+------------------------------
+
+The point-cloud Equiformer uses atom features and 3D coordinates, but it does
+not explicitly use the molecular bond graph as an adjacency structure.
+
+In simple terms:
+
+input = atom features + 3D positions
+
+The model treats the molecule mainly as a geometric point cloud. Attention is
+based on spatial neighborhoods in 3D rather than explicit chemical bonds.
+
+This version tests how much can be learned from geometry alone.
+
+
+Equiformer Adjacency-Aware Variant
+----------------------------------
+
+The adjacency-aware Equiformer uses the Equiformer architecture with molecular
+graph information. It keeps the 3D equivariant representation idea, but it is
+more chemically structured because the molecular connectivity is part of the
+representation.
+
+In simple terms:
+
+input = atom features + molecular graph/connectivity + 3D positions
+
+This version is closer to what we want for molecular representation learning:
+it combines chemical topology with 3D structure.
+
+The adjacency-aware entry point is:
+
+benchmarking/Methods/equiformer_adj.py
+
+It uses stronger training defaults than the early point-cloud baseline:
+
+- AdamW optimizer
+- cosine learning-rate schedule
+- warmup
+- model EMA
+- L1 loss
+- multiple seeds by default
+
+
+Why Benchmarking Was Needed
+---------------------------
+
+The pharmacophore screening pipeline depends on a strong molecular encoder. The
+benchmarking stage therefore gives a controlled way to compare candidate
+encoders before using them for screening. The conclusion is not only based on
+one target or one screening run, but on whether the encoder can learn stable 3D
+molecular representations on QM9.
+
+
+Short Summary
+-------------
+
+The benchmarking pipeline trains and evaluates several 2D, 3D, and equivariant
+models on QM9. Targets are converted into benchmark units, z-score normalized
+using training-set statistics, and denormalized again for MAE reporting. The
+Equiformer variants were tested because they can encode molecular geometry, and
+the adjacency-aware variant is especially relevant because it combines chemical
+graph structure with 3D equivariant representation learning.

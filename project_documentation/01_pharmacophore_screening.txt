@@ -1,0 +1,299 @@
+01_pharmacophore_screening
+==========================
+
+Purpose
+-------
+
+The pharmacophore screening stage applies the selected Equiformer-based
+representation strategy to retrospective virtual screening. The goal is to rank
+candidate ligands for a target and evaluate whether known actives are enriched
+above decoys.
+
+
+Datasets
+--------
+
+The main screening dataset is DUD-E. Additional normalized screening datasets
+are supported:
+
+- LIT-PCBA
+- DEKOIS 2.0
+- BayesBind
+
+All screening datasets are normalized into the same target layout:
+
+data/<dataset>/<target>/
+  crystal_ligand.mol2
+  actives_sdf/
+  decoys_sdf/
+
+Some datasets may use crystal_ligand.sdf instead of crystal_ligand.mol2 when
+that is the available query-ligand format.
+
+The query ligand represents the target reference pharmacophore. The candidate
+ligands are split into active and decoy SDF files.
+
+
+Common Screening Flow
+---------------------
+
+The maintained EquiPharm-family methods share the same general workflow:
+
+1. Read the query ligand and candidate SDF molecules.
+2. Sanitize and prepare molecules with RDKit.
+3. Optionally optimize candidate torsion angles with black-box optimization.
+4. Convert molecules into PyG/Equiformer-compatible graph tensors.
+5. Encode molecules or pharmacophore features with the trained checkpoint.
+6. Compute a candidate score against the query.
+7. Append each completed result to scores.csv for resumability.
+8. Compute ranking metrics and plots after screening.
+
+
+Torsion Optimization
+--------------------
+
+Candidate molecules can be optimized by changing their physical torsion angles.
+The optimizer does not use gradients from the neural network. Instead, it tries
+candidate torsion-angle vectors, rebuilds/re-encodes the molecule, receives a
+screening score, and keeps the best conformation found within the search budget.
+
+Current default optimization settings:
+
+- maxiter: 3
+- popsize: 2
+- polish: true inside scipy differential_evolution
+
+The returned conformation is therefore not guaranteed to be the global optimum.
+It is the best-scoring conformation found within the predefined computational
+budget.
+
+
+Implemented EquiPharm-Family Models
+-----------------------------------
+
+EquiPharm
+~~~~~~~~~
+
+EquiPharm attaches RDKit pharmacophore features to the molecular graph before
+encoding. The final score is based on query-candidate embedding similarity.
+
+
+Equiformer_with_optimization
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This is the plain Equiformer screening baseline. It uses the same molecule
+loading, torsion optimization, and active/decoy evaluation flow, but without
+explicit pharmacophore feature attachment.
+
+
+EquiPharm_Hungarian
+~~~~~~~~~~~~~~~~~~~
+
+This method performs hard one-to-one pharmacophore feature matching.
+
+Assignment:
+
+Euclidean distance in learned embedding space.
+
+Score:
+
+score = -mean(d_i)
+
+where d_i is the Euclidean distance between each matched query feature embedding
+and candidate feature embedding.
+
+
+EquiPharm_Hungarian_v2
+~~~~~~~~~~~~~~~~~~~~~~
+
+Assignment:
+
+Euclidean distance in learned embedding space.
+
+Score:
+
+score = -mean(|d_q - d_c|)
+
+where d_q is the Euclidean distance between two matched query feature embeddings
+and d_c is the Euclidean distance between the corresponding matched candidate
+feature embeddings.
+
+This is the embedding-space geometry-preservation variant.
+
+
+EquiPharm_Hungarian_v3
+~~~~~~~~~~~~~~~~~~~~~~
+
+Assignment:
+
+Euclidean distance in learned embedding space.
+
+Score:
+
+score = -mean(|d_q - d_c|)
+
+where d_q is the 3D Euclidean distance between two matched query pharmacophore
+feature centers and d_c is the 3D Euclidean distance between the corresponding
+matched candidate feature centers.
+
+This is a hybrid method: assignment is embedding-based, but scoring uses
+RDKit/PyG 3D pharmacophore geometry.
+
+
+EquiPharm_Hungarian_3D
+~~~~~~~~~~~~~~~~~~~~~~
+
+Assignment:
+
+3D Euclidean distance between query and candidate pharmacophore feature centers.
+
+Score:
+
+3D pairwise geometry preservation:
+
+score = -mean(|d_q - d_c|)
+
+This method is best interpreted as a 3D pharmacophore geometry baseline or
+ablation inside the EquiPharm screening infrastructure, because the final
+assignment and score do not depend on learned embedding distances.
+
+
+EquiPharm_Hungarian_Cosine
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Assignment:
+
+Cosine similarity between query and candidate feature embeddings.
+
+Score:
+
+Mean cosine similarity of matched query-candidate feature pairs.
+
+
+EquiPharm_Hungarian_Cosine_v2
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Assignment:
+
+Cosine similarity between query and candidate feature embeddings.
+
+Score:
+
+Cosine-distance geometry preservation inside embedding space:
+
+score = -mean(|d_q - d_c|)
+
+where the internal distances are cosine distances between matched embedding
+pairs.
+
+
+External Baselines
+------------------
+
+The repository also contains adapters or scripts for external tools:
+
+- CDPKit
+- PharmacoMatch
+- Schrodinger Phase
+- OpenPharmaco
+- Pharmit
+- Discovery Studio
+
+The CDPKit folder contains the simple psdcreate/psdscreen wrapper. The
+PharmacoMatch-style CDPKit comparison is different: it uses CDPL pharmacophore
+alignment through scripts and ranks molecules by their best alignment score.
+This distinction is documented in:
+
+challenges_and_limitations/00_PharmacoMatch_CDPKit.md
+
+
+Evaluation Metrics
+------------------
+
+Each screening run evaluates active/decoy ranking using:
+
+- AUROC
+- PR-AUC
+- EF1%
+- BEDROC(alpha=20)
+
+AUROC measures broad active/decoy separation across the whole ranked list.
+EF1% and BEDROC focus more strongly on early recognition, which is important
+for virtual screening because users often inspect only the top-ranked compounds.
+
+
+Outputs Per Target
+------------------
+
+Each target result directory contains:
+
+pharmacophore/results/<pipeline>/<target>/
+  scores.csv
+  ranked_hits.csv
+  metrics.json
+  screening_performance_summary.csv
+  auroc_curve_coordinates.csv
+  analysis_artifacts/
+
+The scores.csv file is written incrementally. If a run crashes, rerunning the
+same command with the same output directory skips molecules with already finite
+scores and continues from the missing molecules.
+
+
+Analysis Artifacts
+------------------
+
+EquiPharm-family model runs also write:
+
+analysis_artifacts/
+  run_config.json
+  query.pt
+  molecule_index.jsonl
+  failures.jsonl
+  run_events.jsonl
+  molecules/
+    <molecule_name>.pt
+
+These artifacts save query embeddings, molecule embeddings, optimization
+metadata, and for Hungarian methods also feature embeddings, feature metadata,
+matching details, and score components.
+
+The purpose is to support later analysis without rerunning screening. For
+example, UMAP, error analysis, feature-family statistics, or method comparison
+can be computed from saved artifacts.
+
+
+Configurations
+--------------
+
+Each maintained method has an example config:
+
+pharmacophore/<method>/configs/target.example.json
+
+The common configuration fields are:
+
+- checkpoint_path
+- query_ligand
+- actives_dir
+- decoys_dir
+- output_dir
+- target_name
+- device
+- optimize
+- maxiter
+- popsize
+
+Hungarian variants additionally define the matching method and scoring mode in
+their screening wrapper.
+
+
+Short Summary
+-------------
+
+The pharmacophore screening pipeline evaluates how well Equiformer-based
+representations and RDKit pharmacophore features can rank active molecules above
+decoys. The implemented methods compare global embedding similarity, hard
+Hungarian feature matching, embedding-space geometry preservation, 3D geometry
+preservation, and hybrid embedding-assignment/3D-scoring strategies. Results are
+saved incrementally for resumability, and analysis artifacts are stored per
+target for downstream visualization and interpretation.
