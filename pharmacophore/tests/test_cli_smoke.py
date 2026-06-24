@@ -33,6 +33,8 @@ from pharmacophore.EquiPharm_Hungarian_v2 import screening as hungarian_v2_scree
 from pharmacophore.EquiPharm_Hungarian_v3 import cli as hungarian_v3_cli
 from pharmacophore.EquiPharm_Hungarian_v3 import screening as hungarian_v3_screening
 from pharmacophore.EquiPharm_Hungarian_v4 import screening as hungarian_v4_screening
+from pharmacophore.EquiPharm_Hungarian_v5_hard import screening as hungarian_v5_hard_screening
+from pharmacophore.EquiPharm_Hungarian_v5_soft import screening as hungarian_v5_soft_screening
 from pharmacophore.Equiformer_with_optimization import cli as equiformer_cli
 from pharmacophore.Equiformer_with_optimization import screening as equiformer_screening
 from pharmacophore.CDPKit import cli as cdpkit_cli
@@ -170,6 +172,29 @@ class PipelineWrapperTests(unittest.TestCase):
         self.assertEqual(kwargs["distance_sigma"], 1.0)
         self.assertEqual(kwargs["geometry_penalty_weight"], 1.0)
         self.assertTrue(kwargs["enforce_feature_family"])
+
+    def test_equipharm_hungarian_v5_wrappers_differ_only_in_coverage_policy(self):
+        common = {
+            "checkpoint_path": "checkpoint.pt",
+            "query_ligand": "query.mol2",
+            "actives_dir": "actives_sdf",
+            "decoys_dir": "decoys_sdf",
+            "output_dir": "results",
+        }
+        with patch.object(hungarian_v5_soft_screening, "screen_actives_decoys_matching") as soft_run:
+            hungarian_v5_soft_screening.run_equipharm_hungarian_v5_soft_screening(**common)
+        with patch.object(hungarian_v5_hard_screening, "screen_actives_decoys_matching") as hard_run:
+            hungarian_v5_hard_screening.run_equipharm_hungarian_v5_hard_screening(**common)
+
+        soft = soft_run.call_args.kwargs
+        hard = hard_run.call_args.kwargs
+        self.assertEqual(soft["matching_method"], "hungarian_cosine_quality")
+        self.assertEqual(soft["matching_score_mode"], "hybrid_local_geometry")
+        self.assertEqual(soft["embedding_weight"], 0.4)
+        self.assertEqual(soft["spatial_weight"], 0.6)
+        self.assertEqual(soft["geometry_penalty_weight"], 0.3)
+        self.assertFalse(soft["require_full_query_coverage"])
+        self.assertTrue(hard["require_full_query_coverage"])
 
     def test_equipharm_hungarian_cosine_wrapper_sets_expected_defaults(self):
         with patch.object(hungarian_cosine_screening, "screen_actives_decoys_matching") as run:

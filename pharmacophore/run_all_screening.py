@@ -20,6 +20,8 @@ try:
     from .EquiPharm_Hungarian_v2.screening import run_equipharm_hungarian_v2_screening
     from .EquiPharm_Hungarian_v3.screening import run_equipharm_hungarian_v3_screening
     from .EquiPharm_Hungarian_v4.screening import run_equipharm_hungarian_v4_screening
+    from .EquiPharm_Hungarian_v5_hard.screening import run_equipharm_hungarian_v5_hard_screening
+    from .EquiPharm_Hungarian_v5_soft.screening import run_equipharm_hungarian_v5_soft_screening
     from .OpenPharmaco.screening import run_openpharmaco_screening
     from .PharmacoMatch.screening import run_pharmacomatch_screening
     from .Pharmit.screening import run_pharmit_screening
@@ -36,6 +38,8 @@ except ImportError:
     from pharmacophore.EquiPharm_Hungarian_v2.screening import run_equipharm_hungarian_v2_screening
     from pharmacophore.EquiPharm_Hungarian_v3.screening import run_equipharm_hungarian_v3_screening
     from pharmacophore.EquiPharm_Hungarian_v4.screening import run_equipharm_hungarian_v4_screening
+    from pharmacophore.EquiPharm_Hungarian_v5_hard.screening import run_equipharm_hungarian_v5_hard_screening
+    from pharmacophore.EquiPharm_Hungarian_v5_soft.screening import run_equipharm_hungarian_v5_soft_screening
     from pharmacophore.OpenPharmaco.screening import run_openpharmaco_screening
     from pharmacophore.PharmacoMatch.screening import run_pharmacomatch_screening
     from pharmacophore.Pharmit.screening import run_pharmit_screening
@@ -55,6 +59,8 @@ MODEL_PIPELINES = (
     "EquiPharm_Hungarian_v2",
     "EquiPharm_Hungarian_v3",
     "EquiPharm_Hungarian_v4",
+    "EquiPharm_Hungarian_v5_hard",
+    "EquiPharm_Hungarian_v5_soft",
     "EquiPharm_Hungarian_3D",
     "EquiPharm_Hungarian_Cosine",
     "EquiPharm_Hungarian_Cosine_v2",
@@ -111,6 +117,10 @@ def parse_args():
     parser.add_argument("--popsize", type=int, default=2)
     parser.add_argument("--v4-distance-sigma", type=float, default=1.0)
     parser.add_argument("--v4-geometry-penalty-weight", type=float, default=1.0)
+    parser.add_argument("--v5-embedding-weight", type=float, default=0.4)
+    parser.add_argument("--v5-spatial-weight", type=float, default=0.6)
+    parser.add_argument("--v5-spatial-tau", type=float, default=2.0)
+    parser.add_argument("--v5-geometry-penalty-weight", type=float, default=0.3)
     parser.add_argument("--cdpkit-query-dir", type=Path)
     parser.add_argument("--psdcreate-bin", default="psdcreate")
     parser.add_argument("--psdscreen-bin", default="psdscreen")
@@ -265,6 +275,19 @@ def run_one_pipeline(args, pipeline: str, target_dir: Path, output_root: Path) -
         return run_equipharm_hungarian_v4_screening(
             distance_sigma=args.v4_distance_sigma,
             geometry_penalty_weight=args.v4_geometry_penalty_weight,
+            **model_kwargs,
+        )
+    if pipeline in {"EquiPharm_Hungarian_v5_hard", "EquiPharm_Hungarian_v5_soft"}:
+        runner = (
+            run_equipharm_hungarian_v5_hard_screening
+            if pipeline == "EquiPharm_Hungarian_v5_hard"
+            else run_equipharm_hungarian_v5_soft_screening
+        )
+        return runner(
+            embedding_weight=args.v5_embedding_weight,
+            spatial_weight=args.v5_spatial_weight,
+            spatial_tau=args.v5_spatial_tau,
+            geometry_penalty_weight=args.v5_geometry_penalty_weight,
             **model_kwargs,
         )
     if pipeline == "EquiPharm_Hungarian_3D":
