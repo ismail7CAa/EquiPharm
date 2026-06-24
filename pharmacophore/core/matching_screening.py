@@ -88,6 +88,10 @@ def score_candidate_features(
     distance_sigma: float = 1.0,
     geometry_penalty_weight: float = 1.0,
     enforce_feature_family: bool = True,
+    embedding_weight: float = 0.4,
+    spatial_weight: float = 0.6,
+    spatial_tau: float = 2.0,
+    require_full_query_coverage: bool = False,
 ) -> tuple[float, str, tuple[int, int], list[dict], dict]:
     query_features = query_encoding["feature_embeddings"]
     candidate_features = candidate_encoding["feature_embeddings"]
@@ -100,8 +104,9 @@ def score_candidate_features(
         )
         fallback_score = float(score.squeeze(0).detach().cpu().item())
         is_tiered_score = score_mode == "tiered_distance_geometry"
-        returned_score = 0.0 if is_tiered_score else fallback_score
-        score_source = "no_pharmacophore_features" if is_tiered_score else "global_fallback"
+        needs_pharmacophore_features = score_mode in {"tiered_distance_geometry", "hybrid_local_geometry"}
+        returned_score = 0.0 if needs_pharmacophore_features else fallback_score
+        score_source = "no_pharmacophore_features" if needs_pharmacophore_features else "global_fallback"
         return returned_score, score_source, (
             int(query_features.size(0)),
             int(candidate_features.size(0)),
@@ -146,6 +151,27 @@ def score_candidate_features(
             "geometry_penalty_weight": geometry_penalty_weight,
             "geometry_penalty_factor": 1.0,
             "tiered_final_score": 0.0 if is_tiered_score else fallback_score,
+            "v5_tier1_score": 0.0,
+            "v5_embedding_quality_sum": 0.0,
+            "v5_local_spatial_quality_sum": 0.0,
+            "v5_hybrid_quality_sum": 0.0,
+            "v5_embedding_weight": embedding_weight,
+            "v5_spatial_weight": spatial_weight,
+            "v5_spatial_tau": spatial_tau,
+            "v5_geometry_rmse": 0.0,
+            "v5_query_distance_scale": 0.0,
+            "v5_normalized_geometry_error": 0.0,
+            "v5_geometry_pair_count": 0,
+            "v5_geometry_available": False,
+            "v5_geometry_penalty_weight": geometry_penalty_weight,
+            "v5_geometry_penalty_factor": 1.0,
+            "v5_unmatched_query_count": int(query_features.size(0)),
+            "v5_unmatched_candidate_count": int(candidate_features.size(0)),
+            "v5_full_query_coverage": False,
+            "v5_coverage_status": "no_pharmacophore_features",
+            "v5_require_full_query_coverage": require_full_query_coverage,
+            "v5_rejected_incomplete_coverage": require_full_query_coverage,
+            "v5_final_score": 0.0,
         }
 
     score, similarity, match_details, score_components = matching_score(
@@ -158,6 +184,10 @@ def score_candidate_features(
         enforce_feature_family=enforce_feature_family,
         distance_sigma=distance_sigma,
         geometry_penalty_weight=geometry_penalty_weight,
+        embedding_weight=embedding_weight,
+        spatial_weight=spatial_weight,
+        spatial_tau=spatial_tau,
+        require_full_query_coverage=require_full_query_coverage,
     )
     return score, method, (int(similarity.size(0)), int(similarity.size(1))), match_details, score_components
 
@@ -187,6 +217,10 @@ def screen_actives_decoys_matching(
     distance_sigma: float = 1.0,
     geometry_penalty_weight: float = 1.0,
     enforce_feature_family: bool = True,
+    embedding_weight: float = 0.4,
+    spatial_weight: float = 0.6,
+    spatial_tau: float = 2.0,
+    require_full_query_coverage: bool = False,
 ) -> dict:
     device_obj = torch.device(device)
     if device_obj.type == "cuda" and not torch.cuda.is_available():
@@ -219,6 +253,10 @@ def screen_actives_decoys_matching(
             "distance_sigma": distance_sigma,
             "geometry_penalty_weight": geometry_penalty_weight,
             "enforce_feature_family": enforce_feature_family,
+            "embedding_weight": embedding_weight,
+            "spatial_weight": spatial_weight,
+            "spatial_tau": spatial_tau,
+            "require_full_query_coverage": require_full_query_coverage,
         },
     )
 
@@ -265,6 +303,10 @@ def screen_actives_decoys_matching(
                     distance_sigma=distance_sigma,
                     geometry_penalty_weight=geometry_penalty_weight,
                     enforce_feature_family=enforce_feature_family,
+                    embedding_weight=embedding_weight,
+                    spatial_weight=spatial_weight,
+                    spatial_tau=spatial_tau,
+                    require_full_query_coverage=require_full_query_coverage,
                 )
                 return score, score_source, matrix_shape, match_details, score_components, candidate_encoding
 
@@ -342,6 +384,27 @@ def screen_actives_decoys_matching(
                 "geometry_penalty_weight": score_components.get("geometry_penalty_weight", geometry_penalty_weight),
                 "geometry_penalty_factor": score_components.get("geometry_penalty_factor", 1.0),
                 "tiered_final_score": score_components.get("tiered_final_score", score),
+                "v5_tier1_score": score_components.get("v5_tier1_score", score),
+                "v5_embedding_quality_sum": score_components.get("v5_embedding_quality_sum", 0.0),
+                "v5_local_spatial_quality_sum": score_components.get("v5_local_spatial_quality_sum", 0.0),
+                "v5_hybrid_quality_sum": score_components.get("v5_hybrid_quality_sum", 0.0),
+                "v5_embedding_weight": score_components.get("v5_embedding_weight", embedding_weight),
+                "v5_spatial_weight": score_components.get("v5_spatial_weight", spatial_weight),
+                "v5_spatial_tau": score_components.get("v5_spatial_tau", spatial_tau),
+                "v5_geometry_rmse": score_components.get("v5_geometry_rmse", 0.0),
+                "v5_query_distance_scale": score_components.get("v5_query_distance_scale", 0.0),
+                "v5_normalized_geometry_error": score_components.get("v5_normalized_geometry_error", 0.0),
+                "v5_geometry_pair_count": score_components.get("v5_geometry_pair_count", 0),
+                "v5_geometry_available": score_components.get("v5_geometry_available", False),
+                "v5_geometry_penalty_weight": score_components.get("v5_geometry_penalty_weight", geometry_penalty_weight),
+                "v5_geometry_penalty_factor": score_components.get("v5_geometry_penalty_factor", 1.0),
+                "v5_unmatched_query_count": score_components.get("v5_unmatched_query_count", 0),
+                "v5_unmatched_candidate_count": score_components.get("v5_unmatched_candidate_count", 0),
+                "v5_full_query_coverage": score_components.get("v5_full_query_coverage", False),
+                "v5_coverage_status": score_components.get("v5_coverage_status", "unknown"),
+                "v5_require_full_query_coverage": score_components.get("v5_require_full_query_coverage", require_full_query_coverage),
+                "v5_rejected_incomplete_coverage": score_components.get("v5_rejected_incomplete_coverage", False),
+                "v5_final_score": score_components.get("v5_final_score", score),
                 "matching_details": json.dumps(match_details, sort_keys=True),
                 "torsion_count": opt_meta["torsion_count"],
             }
@@ -429,6 +492,27 @@ def matching_score_fieldnames() -> list[str]:
         "geometry_penalty_weight",
         "geometry_penalty_factor",
         "tiered_final_score",
+        "v5_tier1_score",
+        "v5_embedding_quality_sum",
+        "v5_local_spatial_quality_sum",
+        "v5_hybrid_quality_sum",
+        "v5_embedding_weight",
+        "v5_spatial_weight",
+        "v5_spatial_tau",
+        "v5_geometry_rmse",
+        "v5_query_distance_scale",
+        "v5_normalized_geometry_error",
+        "v5_geometry_pair_count",
+        "v5_geometry_available",
+        "v5_geometry_penalty_weight",
+        "v5_geometry_penalty_factor",
+        "v5_unmatched_query_count",
+        "v5_unmatched_candidate_count",
+        "v5_full_query_coverage",
+        "v5_coverage_status",
+        "v5_require_full_query_coverage",
+        "v5_rejected_incomplete_coverage",
+        "v5_final_score",
         "matching_details",
         "torsion_count",
         "error",

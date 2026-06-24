@@ -29,10 +29,12 @@ EMBEDDING_GEOMETRY_DISTANCE_SCORE_MODE = "embedding_geometry_distance"
 COSINE_SCORE_MODE = "cosine"
 COSINE_GEOMETRY_SCORE_MODE = "cosine_geometry"
 TIERED_DISTANCE_GEOMETRY_SCORE_MODE = "tiered_distance_geometry"
+HYBRID_LOCAL_GEOMETRY_SCORE_MODE = "hybrid_local_geometry"
 NO_MATCH_DISTANCE = 1_000_000.0
 HUNGARIAN_METHOD = "hungarian"
 HUNGARIAN_EUCLIDEAN_METHOD = "hungarian_euclidean"
 HUNGARIAN_GAUSSIAN_METHOD = "hungarian_gaussian"
+HUNGARIAN_COSINE_QUALITY_METHOD = "hungarian_cosine_quality"
 HUNGARIAN_3D_METHOD = "hungarian_3d"
 
 
@@ -346,6 +348,136 @@ def tiered_distance_geometry_score_components(
     }
 
 
+def hybrid_local_geometry_score_components(
+    query_features: torch.Tensor,
+    candidate_features: torch.Tensor,
+    assignments: list[tuple[int, int | None]],
+    match_details: list[dict],
+    *,
+    embedding_weight: float = 0.4,
+    spatial_weight: float = 0.6,
+    spatial_tau: float = 2.0,
+    geometry_penalty_weight: float = 0.3,
+    require_full_query_coverage: bool = False,
+) -> dict:
+    """Compute V5 alignment-free local-quality and global-geometry scoring."""
+    if embedding_weight < 0 or spatial_weight < 0 or embedding_weight + spatial_weight <= 0:
+        raise ValueError("V5 embedding and spatial weights must be non-negative with a positive sum.")
+    if spatial_tau <= 0:
+        raise ValueError("spatial_tau must be greater than zero.")
+    if geometry_penalty_weight < 0:
+        raise ValueError("geometry_penalty_weight must be non-negative.")
+
+    weight_total = embedding_weight + spatial_weight
+    embedding_weight /= weight_total
+    spatial_weight /= weight_total
+    matched_assignments = [(row, col) for row, col in assignments if col is not None]
+    matched_details = [match for match in match_details if match.get("status") == "matched"]
+    cosine = cosine_similarity_matrix(query_features, candidate_features)
+    embedding_qualities = [
+        max(0.0, min(1.0, (float(cosine[row, col].detach().cpu().item()) + 1.0) / 2.0))
+        for row, col in matched_assignments
+    ]
+
+    pair_deltas: dict[tuple[int, int], float] = {}
+    query_pair_distances = []
+    for left_index, right_index in itertools.combinations(range(len(matched_details)), 2):
+        left = matched_details[left_index]
+        right = matched_details[right_index]
+        centers = (
+            left.get("query_center"),
+            right.get("query_center"),
+            left.get("candidate_center"),
+            right.get("candidate_center"),
+        )
+        if any(center is None for center in centers):
+            continue
+        query_distance = euclidean_distance(centers[0], centers[1])
+        candidate_distance = euclidean_distance(centers[2], centers[3])
+        pair_deltas[(left_index, right_index)] = abs(query_distance - candidate_distance)
+        query_pair_distances.append(query_distance)
+
+    local_errors = []
+    local_qualities = []
+    local_available = []
+    hybrid_qualities = []
+    for index, embedding_quality in enumerate(embedding_qualities):
+        deltas = [delta for pair, delta in pair_deltas.items() if index in pair]
+        available = bool(deltas)
+        local_error = math.sqrt(sum(delta * delta for delta in deltas) / len(deltas)) if deltas else 0.0
+        local_quality = math.exp(-local_error / spatial_tau) if available else 1.0
+        hybrid_quality = embedding_weight * embedding_quality + spatial_weight * local_quality
+        local_errors.append(local_error)
+        local_qualities.append(local_quality)
+        local_available.append(available)
+        hybrid_qualities.append(hybrid_quality)
+
+    n_query = int(query_features.size(0))
+    n_candidate = int(candidate_features.size(0))
+    matched_count = len(matched_assignments)
+    full_query_coverage = matched_count == n_query
+    tier1_score = sum(hybrid_qualities) / n_query if n_query else 0.0
+
+    geometry_rmse = (
+        math.sqrt(sum(delta * delta for delta in pair_deltas.values()) / len(pair_deltas))
+        if pair_deltas
+        else 0.0
+    )
+    sorted_query_distances = sorted(query_pair_distances)
+    middle = len(sorted_query_distances) // 2
+    if not sorted_query_distances:
+        query_distance_scale = 0.0
+    elif len(sorted_query_distances) % 2:
+        query_distance_scale = sorted_query_distances[middle]
+    else:
+        query_distance_scale = (sorted_query_distances[middle - 1] + sorted_query_distances[middle]) / 2.0
+    normalized_geometry_error = geometry_rmse / max(query_distance_scale, 1e-8) if pair_deltas else 0.0
+    geometry_factor = math.exp(-geometry_penalty_weight * normalized_geometry_error) if pair_deltas else 1.0
+    coverage_status = "complete" if full_query_coverage else "incomplete"
+    rejected = require_full_query_coverage and not full_query_coverage
+    final_score = 0.0 if rejected else tier1_score * geometry_factor
+
+    for detail, embedding_quality, local_error, local_quality, available, hybrid_quality in zip(
+        matched_details,
+        embedding_qualities,
+        local_errors,
+        local_qualities,
+        local_available,
+        hybrid_qualities,
+    ):
+        detail["embedding_quality"] = embedding_quality
+        detail["local_spatial_error"] = local_error
+        detail["local_spatial_quality"] = local_quality
+        detail["local_spatial_available"] = available
+        detail["hybrid_quality"] = hybrid_quality
+
+    return {
+        "v5_tier1_score": float(tier1_score),
+        "v5_embedding_quality_sum": float(sum(embedding_qualities)),
+        "v5_local_spatial_quality_sum": float(sum(local_qualities)),
+        "v5_hybrid_quality_sum": float(sum(hybrid_qualities)),
+        "v5_embedding_weight": float(embedding_weight),
+        "v5_spatial_weight": float(spatial_weight),
+        "v5_spatial_tau": float(spatial_tau),
+        "v5_geometry_rmse": float(geometry_rmse),
+        "v5_query_distance_scale": float(query_distance_scale),
+        "v5_normalized_geometry_error": float(normalized_geometry_error),
+        "v5_geometry_pair_count": int(len(pair_deltas)),
+        "v5_geometry_available": bool(pair_deltas),
+        "v5_geometry_penalty_weight": float(geometry_penalty_weight),
+        "v5_geometry_penalty_factor": float(geometry_factor),
+        "v5_query_feature_count": n_query,
+        "v5_candidate_feature_count": n_candidate,
+        "v5_unmatched_query_count": int(n_query - matched_count),
+        "v5_unmatched_candidate_count": int(n_candidate - matched_count),
+        "v5_full_query_coverage": bool(full_query_coverage),
+        "v5_coverage_status": coverage_status,
+        "v5_require_full_query_coverage": bool(require_full_query_coverage),
+        "v5_rejected_incomplete_coverage": bool(rejected),
+        "v5_final_score": float(final_score),
+    }
+
+
 def select_score(components: dict, score_mode: str) -> float:
     if score_mode == COSINE_SCORE_MODE:
         return float(components["matched_cosine_similarity_score"])
@@ -353,6 +485,8 @@ def select_score(components: dict, score_mode: str) -> float:
         return float(components["cosine_geometry_score"])
     if score_mode == TIERED_DISTANCE_GEOMETRY_SCORE_MODE:
         return float(components["tiered_final_score"])
+    if score_mode == HYBRID_LOCAL_GEOMETRY_SCORE_MODE:
+        return float(components["v5_final_score"])
     if score_mode == EMBEDDING_DISTANCE_SCORE_MODE:
         return float(components["embedding_distance_score"])
     if score_mode == EMBEDDING_GEOMETRY_DISTANCE_SCORE_MODE:
@@ -394,7 +528,9 @@ def build_hungarian_cost_matrix(
         cost = cost.masked_fill(~compatibility_mask, float("inf"))
 
     # Dummy columns are not real feature matches; they let a query feature stay
-    dummy_cost = similarity.new_full((n_query, n_query), 1.0 - float(unmatched_similarity))
+    # Prefer an explicit unmatched assignment when a real pair has exactly the
+    # same quality. This avoids reporting zero-similarity pairs as matches.
+    dummy_cost = similarity.new_full((n_query, n_query), 1.0 - float(unmatched_similarity) - 1e-6)
     return torch.cat([cost, dummy_cost], dim=1)
 
 
@@ -485,6 +621,10 @@ def matching_score(
     score_mode: str = STRICT_SCORE_MODE,
     distance_sigma: float = 1.0,
     geometry_penalty_weight: float = 1.0,
+    embedding_weight: float = 0.4,
+    spatial_weight: float = 0.6,
+    spatial_tau: float = 2.0,
+    require_full_query_coverage: bool = False,
 ) -> tuple[float, torch.Tensor, list[dict], dict]:
     """Build the similarity matrix and return a score plus selected matches."""
     if method == HUNGARIAN_METHOD:
@@ -499,6 +639,12 @@ def matching_score(
         distances = torch.cdist(query_features, candidate_features, p=2)
         similarity = torch.exp(-0.5 * (distances / distance_sigma) ** 2)
         unmatched_similarity = 0.0
+    elif method == HUNGARIAN_COSINE_QUALITY_METHOD:
+        similarity = (cosine_similarity_matrix(query_features, candidate_features) + 1.0) / 2.0
+        similarity = similarity.clamp(0.0, 1.0)
+        # In V5, any family-compatible candidate is a feasible match; even a
+        # zero-quality pair must beat the dummy so hard coverage is well-defined.
+        unmatched_similarity = -2e-6
     elif method == HUNGARIAN_3D_METHOD:
         if query_metadata is None or candidate_metadata is None:
             raise ValueError("hungarian_3d matching requires query and candidate feature metadata.")
@@ -533,6 +679,19 @@ def matching_score(
             match_details,
             distance_sigma=distance_sigma,
             geometry_penalty_weight=geometry_penalty_weight,
+        )
+    )
+    components.update(
+        hybrid_local_geometry_score_components(
+            query_features,
+            candidate_features,
+            assignments,
+            match_details,
+            embedding_weight=embedding_weight,
+            spatial_weight=spatial_weight,
+            spatial_tau=spatial_tau,
+            geometry_penalty_weight=geometry_penalty_weight,
+            require_full_query_coverage=require_full_query_coverage,
         )
     )
     components["score_mode"] = score_mode

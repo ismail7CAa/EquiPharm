@@ -459,6 +459,78 @@ class ScreeningMetricsTests(unittest.TestCase):
         self.assertEqual(components["geometry_penalty_factor"], 1.0)
         self.assertFalse(components["tier2_geometry_available"])
 
+    def test_v5_soft_ignores_extra_candidate_features(self):
+        if torch is None:
+            self.skipTest("torch is not installed")
+        query = torch.eye(4, dtype=torch.float32)
+        candidate = torch.cat((torch.eye(4), torch.zeros((2, 4))), dim=0)
+        families = ["Donor", "Acceptor", "Aromatic", "Hydrophobe"]
+        centers = [(0.0, 0.0, 0.0), (2.0, 0.0, 0.0), (0.0, 3.0, 0.0), (0.0, 0.0, 4.0)]
+        query_metadata = [
+            {"family": family, "center": center}
+            for family, center in zip(families, centers)
+        ]
+        candidate_metadata = [
+            {"family": family, "center": (center[0] + 5.0, center[1], center[2])}
+            for family, center in zip(families, centers)
+        ] + [
+            {"family": "PosIonizable", "center": (9.0, 9.0, 9.0)},
+            {"family": "NegIonizable", "center": (8.0, 8.0, 8.0)},
+        ]
+
+        score, _, _, components = matching_score(
+            query,
+            candidate,
+            query_metadata=query_metadata,
+            candidate_metadata=candidate_metadata,
+            method="hungarian_cosine_quality",
+            score_mode="hybrid_local_geometry",
+            geometry_penalty_weight=0.3,
+            require_full_query_coverage=False,
+        )
+
+        self.assertAlmostEqual(score, 1.0, places=6)
+        self.assertEqual(components["v5_unmatched_candidate_count"], 2)
+        self.assertEqual(components["v5_unmatched_query_count"], 0)
+        self.assertTrue(components["v5_full_query_coverage"])
+
+    def test_v5_hard_rejects_coverage_that_soft_scores_partially(self):
+        if torch is None:
+            self.skipTest("torch is not installed")
+        query = torch.eye(4, dtype=torch.float32)
+        candidate = torch.eye(4, dtype=torch.float32)[:3]
+        families = ["Donor", "Acceptor", "Aromatic", "Hydrophobe"]
+        centers = [(0.0, 0.0, 0.0), (2.0, 0.0, 0.0), (0.0, 3.0, 0.0), (0.0, 0.0, 4.0)]
+        query_metadata = [{"family": family, "center": center} for family, center in zip(families, centers)]
+        candidate_metadata = query_metadata[:3]
+
+        soft_score, _, _, soft = matching_score(
+            query,
+            candidate,
+            query_metadata=query_metadata,
+            candidate_metadata=candidate_metadata,
+            method="hungarian_cosine_quality",
+            score_mode="hybrid_local_geometry",
+            geometry_penalty_weight=0.3,
+            require_full_query_coverage=False,
+        )
+        hard_score, _, _, hard = matching_score(
+            query,
+            candidate,
+            query_metadata=query_metadata,
+            candidate_metadata=candidate_metadata,
+            method="hungarian_cosine_quality",
+            score_mode="hybrid_local_geometry",
+            geometry_penalty_weight=0.3,
+            require_full_query_coverage=True,
+        )
+
+        self.assertAlmostEqual(soft_score, 0.75, places=6)
+        self.assertEqual(hard_score, 0.0)
+        self.assertEqual(hard["v5_unmatched_query_count"], 1)
+        self.assertTrue(hard["v5_rejected_incomplete_coverage"])
+        self.assertFalse(soft["v5_rejected_incomplete_coverage"])
+
     def test_cosine_score_uses_average_matched_embedding_similarity(self):
         if torch is None:
             self.skipTest("torch is not installed")
