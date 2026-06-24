@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import itertools
+import math
 
 import torch
 import torch.nn.functional as F
@@ -27,9 +28,11 @@ EMBEDDING_DISTANCE_SCORE_MODE = "embedding_distance"
 EMBEDDING_GEOMETRY_DISTANCE_SCORE_MODE = "embedding_geometry_distance"
 COSINE_SCORE_MODE = "cosine"
 COSINE_GEOMETRY_SCORE_MODE = "cosine_geometry"
+TIERED_DISTANCE_GEOMETRY_SCORE_MODE = "tiered_distance_geometry"
 NO_MATCH_DISTANCE = 1_000_000.0
 HUNGARIAN_METHOD = "hungarian"
 HUNGARIAN_EUCLIDEAN_METHOD = "hungarian_euclidean"
+HUNGARIAN_GAUSSIAN_METHOD = "hungarian_gaussian"
 HUNGARIAN_3D_METHOD = "hungarian_3d"
 
 
@@ -272,11 +275,84 @@ def embedding_distance_score_components(
     }
 
 
+def tiered_distance_geometry_score_components(
+    query_features: torch.Tensor,
+    candidate_features: torch.Tensor,
+    assignments: list[tuple[int, int | None]],
+    match_details: list[dict],
+    *,
+    distance_sigma: float = 1.0,
+    geometry_penalty_weight: float = 1.0,
+) -> dict:
+    """Score matched embedding distances, then penalize distorted 3D geometry.
+
+    Tier 1 uses a Gaussian distance-quality function and normalizes by the
+    larger feature-set size, so unmatched features reduce the score. Tier 2
+    compares all pairwise distances between matched 3D feature centers. Its
+    RMSE is converted to a bounded multiplicative penalty.
+    """
+    if distance_sigma <= 0:
+        raise ValueError("distance_sigma must be greater than zero.")
+    if geometry_penalty_weight < 0:
+        raise ValueError("geometry_penalty_weight must be non-negative.")
+
+    matched_assignments = [(row, col) for row, col in assignments if col is not None]
+    embedding_distances = [
+        float(torch.linalg.vector_norm(query_features[row] - candidate_features[col]).detach().cpu().item())
+        for row, col in matched_assignments
+    ]
+    qualities = [math.exp(-0.5 * (distance / distance_sigma) ** 2) for distance in embedding_distances]
+    normalization = max(int(query_features.size(0)), int(candidate_features.size(0)))
+    tier1_score = sum(qualities) / normalization if normalization else 0.0
+
+    matched_details = [match for match in match_details if match.get("status") == "matched"]
+    geometry_deltas = []
+    for left, right in itertools.combinations(matched_details, 2):
+        centers = (
+            left.get("query_center"),
+            right.get("query_center"),
+            left.get("candidate_center"),
+            right.get("candidate_center"),
+        )
+        if any(center is None for center in centers):
+            continue
+        query_distance = euclidean_distance(centers[0], centers[1])
+        candidate_distance = euclidean_distance(centers[2], centers[3])
+        geometry_deltas.append(abs(query_distance - candidate_distance))
+
+    geometry_rmse = (
+        math.sqrt(sum(delta * delta for delta in geometry_deltas) / len(geometry_deltas))
+        if geometry_deltas
+        else 0.0
+    )
+    geometry_available = bool(geometry_deltas)
+    geometry_factor = math.exp(-geometry_penalty_weight * geometry_rmse) if geometry_available else 1.0
+    final_score = tier1_score * geometry_factor
+
+    for detail, distance, quality in zip(matched_details, embedding_distances, qualities):
+        detail["embedding_distance"] = distance
+        detail["distance_quality"] = quality
+
+    return {
+        "tier1_score": float(tier1_score),
+        "tier1_distance_quality_sum": float(sum(qualities)),
+        "tier1_distance_sigma": float(distance_sigma),
+        "tier2_geometry_rmse": float(geometry_rmse),
+        "tier2_geometry_pair_count": int(len(geometry_deltas)),
+        "tier2_geometry_available": bool(geometry_available),
+        "geometry_penalty_weight": float(geometry_penalty_weight),
+        "geometry_penalty_factor": float(geometry_factor),
+        "tiered_final_score": float(final_score),
+    }
+
+
 def select_score(components: dict, score_mode: str) -> float:
     if score_mode == COSINE_SCORE_MODE:
         return float(components["matched_cosine_similarity_score"])
     if score_mode == COSINE_GEOMETRY_SCORE_MODE:
         return float(components["cosine_geometry_score"])
+    if score_mode == TIERED_DISTANCE_GEOMETRY_SCORE_MODE:
+        return float(components["tiered_final_score"])
     if score_mode == EMBEDDING_DISTANCE_SCORE_MODE:
         return float(components["embedding_distance_score"])
     if score_mode == EMBEDDING_GEOMETRY_DISTANCE_SCORE_MODE:
@@ -407,6 +483,8 @@ def matching_score(
     method: str,
     enforce_feature_family: bool = True,
     score_mode: str = STRICT_SCORE_MODE,
+    distance_sigma: float = 1.0,
+    geometry_penalty_weight: float = 1.0,
 ) -> tuple[float, torch.Tensor, list[dict], dict]:
     """Build the similarity matrix and return a score plus selected matches."""
     if method == HUNGARIAN_METHOD:
@@ -415,6 +493,12 @@ def matching_score(
     elif method == HUNGARIAN_EUCLIDEAN_METHOD:
         similarity = embedding_distance_similarity_matrix(query_features, candidate_features)
         unmatched_similarity = -NO_MATCH_DISTANCE
+    elif method == HUNGARIAN_GAUSSIAN_METHOD:
+        if distance_sigma <= 0:
+            raise ValueError("distance_sigma must be greater than zero.")
+        distances = torch.cdist(query_features, candidate_features, p=2)
+        similarity = torch.exp(-0.5 * (distances / distance_sigma) ** 2)
+        unmatched_similarity = 0.0
     elif method == HUNGARIAN_3D_METHOD:
         if query_metadata is None or candidate_metadata is None:
             raise ValueError("hungarian_3d matching requires query and candidate feature metadata.")
@@ -441,6 +525,16 @@ def matching_score(
     components.update(distance_score_components(match_details))
     components.update(cosine_score_components(query_features, candidate_features, assignments))
     components.update(embedding_distance_score_components(query_features, candidate_features, assignments))
+    components.update(
+        tiered_distance_geometry_score_components(
+            query_features,
+            candidate_features,
+            assignments,
+            match_details,
+            distance_sigma=distance_sigma,
+            geometry_penalty_weight=geometry_penalty_weight,
+        )
+    )
     components["score_mode"] = score_mode
     score = select_score(components, score_mode)
     return score, similarity, match_details, components

@@ -19,6 +19,7 @@ try:
     from .EquiPharm_Hungarian_Cosine_v2.screening import run_equipharm_hungarian_cosine_v2_screening
     from .EquiPharm_Hungarian_v2.screening import run_equipharm_hungarian_v2_screening
     from .EquiPharm_Hungarian_v3.screening import run_equipharm_hungarian_v3_screening
+    from .EquiPharm_Hungarian_v4.screening import run_equipharm_hungarian_v4_screening
     from .OpenPharmaco.screening import run_openpharmaco_screening
     from .PharmacoMatch.screening import run_pharmacomatch_screening
     from .Pharmit.screening import run_pharmit_screening
@@ -34,6 +35,7 @@ except ImportError:
     from pharmacophore.EquiPharm_Hungarian_Cosine_v2.screening import run_equipharm_hungarian_cosine_v2_screening
     from pharmacophore.EquiPharm_Hungarian_v2.screening import run_equipharm_hungarian_v2_screening
     from pharmacophore.EquiPharm_Hungarian_v3.screening import run_equipharm_hungarian_v3_screening
+    from pharmacophore.EquiPharm_Hungarian_v4.screening import run_equipharm_hungarian_v4_screening
     from pharmacophore.OpenPharmaco.screening import run_openpharmaco_screening
     from pharmacophore.PharmacoMatch.screening import run_pharmacomatch_screening
     from pharmacophore.Pharmit.screening import run_pharmit_screening
@@ -52,6 +54,7 @@ MODEL_PIPELINES = (
     "EquiPharm_Hungarian",
     "EquiPharm_Hungarian_v2",
     "EquiPharm_Hungarian_v3",
+    "EquiPharm_Hungarian_v4",
     "EquiPharm_Hungarian_3D",
     "EquiPharm_Hungarian_Cosine",
     "EquiPharm_Hungarian_Cosine_v2",
@@ -106,6 +109,8 @@ def parse_args():
     parser.add_argument("--no-optimize", action="store_true")
     parser.add_argument("--maxiter", type=int, default=3)
     parser.add_argument("--popsize", type=int, default=2)
+    parser.add_argument("--v4-distance-sigma", type=float, default=1.0)
+    parser.add_argument("--v4-geometry-penalty-weight", type=float, default=1.0)
     parser.add_argument("--cdpkit-query-dir", type=Path)
     parser.add_argument("--psdcreate-bin", default="psdcreate")
     parser.add_argument("--psdscreen-bin", default="psdscreen")
@@ -256,6 +261,12 @@ def run_one_pipeline(args, pipeline: str, target_dir: Path, output_root: Path) -
         return run_equipharm_hungarian_v2_screening(**model_kwargs)
     if pipeline == "EquiPharm_Hungarian_v3":
         return run_equipharm_hungarian_v3_screening(**model_kwargs)
+    if pipeline == "EquiPharm_Hungarian_v4":
+        return run_equipharm_hungarian_v4_screening(
+            distance_sigma=args.v4_distance_sigma,
+            geometry_penalty_weight=args.v4_geometry_penalty_weight,
+            **model_kwargs,
+        )
     if pipeline == "EquiPharm_Hungarian_3D":
         return run_equipharm_hungarian_3d_screening(**model_kwargs)
     if pipeline == "EquiPharm_Hungarian_Cosine":

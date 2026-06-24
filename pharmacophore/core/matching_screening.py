@@ -85,6 +85,9 @@ def score_candidate_features(
     candidate_encoding: dict,
     method: str,
     score_mode: str,
+    distance_sigma: float = 1.0,
+    geometry_penalty_weight: float = 1.0,
+    enforce_feature_family: bool = True,
 ) -> tuple[float, str, tuple[int, int], list[dict], dict]:
     query_features = query_encoding["feature_embeddings"]
     candidate_features = candidate_encoding["feature_embeddings"]
@@ -96,7 +99,10 @@ def score_candidate_features(
             dim=1,
         )
         fallback_score = float(score.squeeze(0).detach().cpu().item())
-        return fallback_score, "global_fallback", (
+        is_tiered_score = score_mode == "tiered_distance_geometry"
+        returned_score = 0.0 if is_tiered_score else fallback_score
+        score_source = "no_pharmacophore_features" if is_tiered_score else "global_fallback"
+        return returned_score, score_source, (
             int(query_features.size(0)),
             int(candidate_features.size(0)),
         ), [], {
@@ -131,6 +137,15 @@ def score_candidate_features(
             "matched_average_similarity": 0.0,
             "query_feature_coverage": 0.0,
             "candidate_feature_coverage": 0.0,
+            "tier1_score": 0.0 if is_tiered_score else fallback_score,
+            "tier1_distance_quality_sum": 0.0 if is_tiered_score else fallback_score,
+            "tier1_distance_sigma": distance_sigma,
+            "tier2_geometry_rmse": 0.0,
+            "tier2_geometry_pair_count": 0,
+            "tier2_geometry_available": False,
+            "geometry_penalty_weight": geometry_penalty_weight,
+            "geometry_penalty_factor": 1.0,
+            "tiered_final_score": 0.0 if is_tiered_score else fallback_score,
         }
 
     score, similarity, match_details, score_components = matching_score(
@@ -140,6 +155,9 @@ def score_candidate_features(
         candidate_metadata=candidate_encoding.get("feature_metadata"),
         method=method,
         score_mode=score_mode,
+        enforce_feature_family=enforce_feature_family,
+        distance_sigma=distance_sigma,
+        geometry_penalty_weight=geometry_penalty_weight,
     )
     return score, method, (int(similarity.size(0)), int(similarity.size(1))), match_details, score_components
 
@@ -166,6 +184,9 @@ def screen_actives_decoys_matching(
     exclude_rings: bool = True,
     one_per_bond: bool = False,
     limit: int | None = None,
+    distance_sigma: float = 1.0,
+    geometry_penalty_weight: float = 1.0,
+    enforce_feature_family: bool = True,
 ) -> dict:
     device_obj = torch.device(device)
     if device_obj.type == "cuda" and not torch.cuda.is_available():
@@ -195,6 +216,9 @@ def screen_actives_decoys_matching(
             "exclude_rings": exclude_rings,
             "one_per_bond": one_per_bond,
             "limit": limit,
+            "distance_sigma": distance_sigma,
+            "geometry_penalty_weight": geometry_penalty_weight,
+            "enforce_feature_family": enforce_feature_family,
         },
     )
 
@@ -238,6 +262,9 @@ def screen_actives_decoys_matching(
                     candidate_encoding=candidate_encoding,
                     method=matching_method,
                     score_mode=matching_score_mode,
+                    distance_sigma=distance_sigma,
+                    geometry_penalty_weight=geometry_penalty_weight,
+                    enforce_feature_family=enforce_feature_family,
                 )
                 return score, score_source, matrix_shape, match_details, score_components, candidate_encoding
 
@@ -306,6 +333,15 @@ def screen_actives_decoys_matching(
                 "matched_average_similarity": score_components.get("matched_average_similarity", 0.0),
                 "query_feature_coverage": score_components.get("query_feature_coverage", 0.0),
                 "candidate_feature_coverage": score_components.get("candidate_feature_coverage", 0.0),
+                "tier1_score": score_components.get("tier1_score", score),
+                "tier1_distance_quality_sum": score_components.get("tier1_distance_quality_sum", 0.0),
+                "tier1_distance_sigma": score_components.get("tier1_distance_sigma", distance_sigma),
+                "tier2_geometry_rmse": score_components.get("tier2_geometry_rmse", 0.0),
+                "tier2_geometry_pair_count": score_components.get("tier2_geometry_pair_count", 0),
+                "tier2_geometry_available": score_components.get("tier2_geometry_available", False),
+                "geometry_penalty_weight": score_components.get("geometry_penalty_weight", geometry_penalty_weight),
+                "geometry_penalty_factor": score_components.get("geometry_penalty_factor", 1.0),
+                "tiered_final_score": score_components.get("tiered_final_score", score),
                 "matching_details": json.dumps(match_details, sort_keys=True),
                 "torsion_count": opt_meta["torsion_count"],
             }
@@ -384,6 +420,15 @@ def matching_score_fieldnames() -> list[str]:
         "matched_average_similarity",
         "query_feature_coverage",
         "candidate_feature_coverage",
+        "tier1_score",
+        "tier1_distance_quality_sum",
+        "tier1_distance_sigma",
+        "tier2_geometry_rmse",
+        "tier2_geometry_pair_count",
+        "tier2_geometry_available",
+        "geometry_penalty_weight",
+        "geometry_penalty_factor",
+        "tiered_final_score",
         "matching_details",
         "torsion_count",
         "error",

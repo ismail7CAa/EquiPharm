@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import math
 from pathlib import Path
 
 import pandas as pd
@@ -401,6 +402,62 @@ class ScreeningMetricsTests(unittest.TestCase):
         self.assertAlmostEqual(components["geometry_distance_score"], -1.0, places=6)
         self.assertAlmostEqual(components["average_geometry_distance_delta"], 1.0, places=6)
         self.assertEqual(components["geometry_distance_pair_count"], 1)
+
+    def test_tiered_v4_combines_distance_quality_coverage_and_geometry(self):
+        if torch is None:
+            self.skipTest("torch is not installed")
+        query = torch.tensor([[0.0, 0.0], [0.0, 2.0]], dtype=torch.float32)
+        candidate = torch.tensor([[0.0, 0.0], [0.0, 2.0], [9.0, 9.0]], dtype=torch.float32)
+        query_metadata = [
+            {"family": "Donor", "center": (0.0, 0.0, 0.0)},
+            {"family": "Acceptor", "center": (0.0, 2.0, 0.0)},
+        ]
+        candidate_metadata = [
+            {"family": "Donor", "center": (3.0, 0.0, 0.0)},
+            {"family": "Acceptor", "center": (3.0, 3.0, 0.0)},
+            {"family": "Aromatic", "center": (9.0, 9.0, 9.0)},
+        ]
+
+        score, _, details, components = matching_score(
+            query,
+            candidate,
+            query_metadata=query_metadata,
+            candidate_metadata=candidate_metadata,
+            method="hungarian_gaussian",
+            score_mode="tiered_distance_geometry",
+            distance_sigma=1.0,
+            geometry_penalty_weight=2.0,
+        )
+
+        self.assertAlmostEqual(components["tier1_score"], 2.0 / 3.0, places=6)
+        self.assertAlmostEqual(components["tier2_geometry_rmse"], 1.0, places=6)
+        self.assertAlmostEqual(components["geometry_penalty_factor"], math.exp(-2.0), places=6)
+        self.assertAlmostEqual(score, (2.0 / 3.0) * math.exp(-2.0), places=6)
+        self.assertEqual(components["tier2_geometry_pair_count"], 1)
+        self.assertTrue(components["tier2_geometry_available"])
+        self.assertEqual([detail["distance_quality"] for detail in details], [1.0, 1.0])
+
+    def test_tiered_v4_uses_neutral_geometry_when_underspecified(self):
+        if torch is None:
+            self.skipTest("torch is not installed")
+        query = torch.tensor([[0.0, 0.0]], dtype=torch.float32)
+        candidate = torch.tensor([[1.0, 0.0]], dtype=torch.float32)
+        metadata = [{"family": "Donor", "center": (0.0, 0.0, 0.0)}]
+
+        score, _, _, components = matching_score(
+            query,
+            candidate,
+            query_metadata=metadata,
+            candidate_metadata=metadata,
+            method="hungarian_gaussian",
+            score_mode="tiered_distance_geometry",
+            distance_sigma=1.0,
+            geometry_penalty_weight=10.0,
+        )
+
+        self.assertAlmostEqual(score, math.exp(-0.5), places=6)
+        self.assertEqual(components["geometry_penalty_factor"], 1.0)
+        self.assertFalse(components["tier2_geometry_available"])
 
     def test_cosine_score_uses_average_matched_embedding_similarity(self):
         if torch is None:

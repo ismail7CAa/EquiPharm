@@ -1,0 +1,15 @@
+{
+  "checkpoint_path": "models_checkpt/checkpoint_02-05-26/best_model.pt",
+  "query_ligand": "data/DUD-E/<target>/crystal_ligand.mol2",
+  "actives_dir": "data/DUD-E/<target>/actives_sdf",
+  "decoys_dir": "data/DUD-E/<target>/decoys_sdf",
+  "output_dir": "pharmacophore/results/EquiPharm_Hungarian_v4/<target>",
+  "target_name": "<target>",
+  "distance_sigma": 1.0,
+  "geometry_penalty_weight": 1.0,
+  "enforce_feature_family": true,
+  "device": "cuda",
+  "optimize": true,
+  "maxiter": 3,
+  "popsize": 2
+}

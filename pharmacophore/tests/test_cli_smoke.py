@@ -32,6 +32,7 @@ from pharmacophore.EquiPharm_Hungarian_v2 import cli as hungarian_v2_cli
 from pharmacophore.EquiPharm_Hungarian_v2 import screening as hungarian_v2_screening
 from pharmacophore.EquiPharm_Hungarian_v3 import cli as hungarian_v3_cli
 from pharmacophore.EquiPharm_Hungarian_v3 import screening as hungarian_v3_screening
+from pharmacophore.EquiPharm_Hungarian_v4 import screening as hungarian_v4_screening
 from pharmacophore.Equiformer_with_optimization import cli as equiformer_cli
 from pharmacophore.Equiformer_with_optimization import screening as equiformer_screening
 from pharmacophore.CDPKit import cli as cdpkit_cli
@@ -149,6 +150,26 @@ class PipelineWrapperTests(unittest.TestCase):
         self.assertEqual(kwargs["matching_method"], "hungarian_euclidean")
         self.assertEqual(kwargs["matching_score_mode"], "geometry_distance")
         self.assertEqual(kwargs["model_module"], "benchmarking.Methods.equiformer_encoder_matching")
+
+    def test_equipharm_hungarian_v4_wrapper_sets_expected_defaults(self):
+        with patch.object(hungarian_v4_screening, "screen_actives_decoys_matching") as run:
+            run.return_value = {"roc_auc": 1.0}
+            result = hungarian_v4_screening.run_equipharm_hungarian_v4_screening(
+                checkpoint_path="checkpoint.pt",
+                query_ligand="query.mol2",
+                actives_dir="actives_sdf",
+                decoys_dir="decoys_sdf",
+                output_dir="pharmacophore/results/EquiPharm_Hungarian_v4/aces",
+            )
+
+        self.assertEqual(result, {"roc_auc": 1.0})
+        kwargs = run.call_args.kwargs
+        self.assertEqual(kwargs["pipeline_name"], "EquiPharm_Hungarian_v4")
+        self.assertEqual(kwargs["matching_method"], "hungarian_gaussian")
+        self.assertEqual(kwargs["matching_score_mode"], "tiered_distance_geometry")
+        self.assertEqual(kwargs["distance_sigma"], 1.0)
+        self.assertEqual(kwargs["geometry_penalty_weight"], 1.0)
+        self.assertTrue(kwargs["enforce_feature_family"])
 
     def test_equipharm_hungarian_cosine_wrapper_sets_expected_defaults(self):
         with patch.object(hungarian_cosine_screening, "screen_actives_decoys_matching") as run:
