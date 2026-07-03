@@ -32,13 +32,17 @@ This explains why the CDPKit wrapper scores did not match the PharmacoMatch comp
 
 ## Current Repository Interpretation
 
-There are now two CDPKit-related workflows:
+The maintained CDPKit adapter now uses the PharmacoMatch-style CDPL alignment
+workflow:
 
 ```text
 pharmacophore/CDPKit/
 ```
 
-This remains the reusable command-line CDPKit baseline adapter. It uses `psdcreate` and `psdscreen`, writes the same result files as the other wrappers, and is useful as a hit-based CDPKit screening baseline.
+It creates active/decoy pharmacophore databases, aligns every ligand
+pharmacophore to `query.pml`, and ranks molecules by their best alignment score.
+This is the workflow to use when comparing against PharmacoMatch's CDPKit-style
+alignment scores.
 
 ```text
 scripts/run_cdpkit_pharmacomatch_all_dude.sh
@@ -46,7 +50,8 @@ scripts/run_pharmacomatch_cdpkit_alignment.py
 scripts/eval_pharmacomatch_cdpkit_alignment.py
 ```
 
-These scripts implement the PharmacoMatch-aligned CDPL pharmacophore alignment workflow. This is the workflow to use when comparing against PharmacoMatch's CDPKit-style alignment scores.
+These scripts are kept as legacy/reproducibility entry points for the original
+server workflow.
 
 ## External Repositories
 
@@ -69,8 +74,9 @@ The scripts assume this local layout on the execution machine.
 
 ## Practical Note
 
-For paper or report wording, avoid saying that the simple `pharmacophore/CDPKit` wrapper reproduces the PharmacoMatch CDPKit baseline. The precise statement is:
+For paper or report wording, distinguish the historical implementation from the
+current maintained adapter. The precise statement is:
 
 ```text
-The standalone CDPKit wrapper uses psdcreate/psdscreen hit-based screening, whereas the PharmacoMatch comparison uses CDPL pharmacophore alignment and ranks ligands by their best alignment score.
+The original standalone CDPKit wrapper used psdcreate/psdscreen hit-based screening. The maintained CDPKit adapter now uses CDPL pharmacophore alignment and ranks ligands by their best alignment score, matching the PharmacoMatch-style CDPKit comparison.
 ```

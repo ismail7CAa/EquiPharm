@@ -199,10 +199,13 @@ The repository also contains adapters or scripts for external tools:
 - Pharmit
 - Discovery Studio
 
-The CDPKit folder contains the simple psdcreate/psdscreen wrapper. The
-PharmacoMatch-style CDPKit comparison is different: it uses CDPL pharmacophore
-alignment through scripts and ranks molecules by their best alignment score.
-This distinction is documented in:
+The CDPKit folder contains the PharmacoMatch-style CDPKit/CDPL pharmacophore
+alignment baseline. It creates ligand pharmacophore databases, aligns every
+ligand pharmacophore to query.pml, and ranks molecules by their best alignment
+score. The older script-based alignment workflow is still kept under scripts/
+for reproducibility.
+
+The original psdcreate/psdscreen distinction is documented in:
 
 challenges_and_limitations/00_PharmacoMatch_CDPKit.md
 

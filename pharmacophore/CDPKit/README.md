@@ -1,32 +1,32 @@
-# CDPKit Baseline
+# CDPKit / CDPL Alignment Baseline
 
-Optional adapter for CDPKit's `psdcreate` and `psdscreen` command-line tools.
+Optional adapter for the CDPKit/CDPL pharmacophore-alignment baseline used in
+the PharmacoMatch comparison.
 
-This wrapper is intentionally isolated from the EquiPharm implementation. It prepares a combined active/decoy SDF, builds a CDPKit pharmacophore-screening database, screens it with a supplied query pharmacophore, then writes the same `scores.csv`, `ranked_hits.csv`, `metrics.json`, and plots used by the other pipelines.
+This wrapper prepares active and decoy SDF bundles, creates CDPL pharmacophore
+screening databases (`.psd`), aligns every ligand pharmacophore to `query.pml`,
+and ranks molecules by their best CDPL pharmacophore fit score. It writes the
+same `scores.csv`, `ranked_hits.csv`, `metrics.json`, and plots used by the
+other pipelines.
 
-Important distinction: this wrapper is the simple command-line CDPKit baseline. It uses `psdscreen` hit output, so non-hit molecules are not reported by CDPKit and are assigned a default miss score by the wrapper. This is not the same scoring path as the CDPKit comparison used around PharmacoMatch.
-
-For the PharmacoMatch-style CDPKit comparison, use the CDPL pharmacophore-alignment scripts in `scripts/`, especially:
-
-```text
-scripts/run_cdpkit_pharmacomatch_all_dude.sh
-scripts/run_pharmacomatch_cdpkit_alignment.py
-scripts/eval_pharmacomatch_cdpkit_alignment.py
-```
-
-That workflow uses the CDPL pharmacophore alignment API to compute an alignment score for every ligand pharmacophore, then ranks molecules by their best alignment score. See `challenges_and_limitations/00_PharmacoMatch_CDPKit.md` for the detailed limitation.
+This is not the old `psdscreen` hit-output workflow. `psdscreen` reports only
+hits, whereas this alignment path gives every generated ligand pharmacophore a
+continuous score and max-pools scores by molecule.
 
 The candidate data layout is the same as EquiPharm:
 
 ```text
 data/DUD-E/<target>/
+  crystal_ligand.mol2
   actives_sdf/
   decoys_sdf/
 ```
 
-CDPKit additionally needs a pharmacophore query file supported by `psdscreen`: `.cdf`, `.pml`, or `.psd`. When `--target-dir` is used, the CLI will look for `query.cdf`, `query.pml`, `query.psd`, `crystal_ligand.cdf`, or `crystal_ligand.pml` inside that target directory. If none exists, it generates `query.pml` from `crystal_ligand.mol2` or `crystal_ligand.sdf` using the Python CDPL API.
+CDPL alignment needs `query.pml`. When `--target-dir` is used, the CLI looks for
+`query.pml` or `crystal_ligand.pml`; if neither exists, it generates `query.pml`
+from the query ligand with Python CDPL.
 
-Example:
+Run one target:
 
 ```bash
 python -m pharmacophore.CDPKit.cli \
@@ -46,17 +46,46 @@ This writes per-target files under:
 
 ```text
 pharmacophore/results/CDPKit/<target>/
+  raw/query.pml
+  raw/actives.psd
+  raw/inactives.psd
+  vs/all_actives_aligned.pt
+  vs/all_inactives_aligned.pt
   scores.csv
   ranked_hits.csv
   metrics.json
 ```
 
-It also writes:
+You need Python CDPKit/CDPL available. If `psdcreate` is available on `PATH`, or
+passed with `--psdcreate-bin`, it is used to create PSD databases; otherwise the
+wrapper falls back to Python CDPL PSD creation.
 
-```text
-pharmacophore/results/CDPKit/dataset_metrics.csv
+## Python Function API
+
+For another project, import the CDPL alignment scorer directly:
+
+```python
+from pharmacophore.CDPKit import score_cdpkit_alignment
+
+score = score_cdpkit_alignment(
+    query_pharmacophore="query.pml",
+    candidate_sdf="ligand.sdf",
+    work_dir="cdpkit_work",
+)
 ```
 
-You need CDPKit installed and `psdcreate`/`psdscreen` available on `PATH`, or pass explicit executable paths in the config.
+For a batch of SDF files:
 
-The large external installations are expected locally on the Linux/Jupyter machine under `external/` and are not committed to this repository.
+```python
+from pharmacophore.CDPKit import score_cdpkit_alignment_batch
+
+scores = score_cdpkit_alignment_batch(
+    query_pharmacophore="query.pml",
+    candidate_sdfs=["ligand_a.sdf", "ligand_b.sdf"],
+    work_dir="cdpkit_work",
+)
+```
+
+`scores` is a dictionary keyed by input file stem. The score is the best CDPL
+pharmacophore fit score over generated pharmacophores/conformations for that
+molecule.

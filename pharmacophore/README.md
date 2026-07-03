@@ -125,7 +125,7 @@ pharmacophore/results/EquiPharm_Hungarian_Cosine_v2/<target>/EquiPharm_Hungarian
 
 External baselines are scaffolded but kept isolated from the main EquiPharm code path:
 
-- `pharmacophore/CDPKit/` wraps CDPKit `psdcreate`/`psdscreen` for pharmacophore database screening.
+- `pharmacophore/CDPKit/` wraps the CDPKit/CDPL pharmacophore-alignment baseline used for PharmacoMatch-style CDPKit comparisons.
 - `pharmacophore/PharmacoMatch/` wraps a configurable PharmacoMatch command and parses a score from JSON or text output.
 - `pharmacophore/SchrodingerPhase/` wraps a local Schrodinger Phase screening command.
 - `pharmacophore/OpenPharmaco/` wraps a local OpenPharmaco-style screening command.
