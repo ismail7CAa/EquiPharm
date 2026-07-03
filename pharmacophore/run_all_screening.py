@@ -228,7 +228,7 @@ def run_one_pipeline(args, pipeline: str, target_dir: Path, output_root: Path) -
         query_root = Path(args.cdpkit_query_dir) / target_name if args.cdpkit_query_dir else target_dir
         query_pharmacophore = find_cdpkit_query(query_root)
         if query_pharmacophore is None:
-            raise FileNotFoundError(f"No CDPKit query pharmacophore found for {target_name}.")
+            raise FileNotFoundError(f"No CDPL query.pml found for {target_name}.")
         return run_cdpkit_screening(
             query_pharmacophore=query_pharmacophore,
             output_dir=output_root / pipeline / target_name,

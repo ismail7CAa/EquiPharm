@@ -1,11 +1,9 @@
 {
-  "query_pharmacophore": "data/DUD-E/<target>/query.cdf",
+  "query_pharmacophore": "data/DUD-E/<target>/query.pml",
   "actives_dir": "data/DUD-E/<target>/actives_sdf",
   "decoys_dir": "data/DUD-E/<target>/decoys_sdf",
   "output_dir": "pharmacophore/results/CDPKit/<target>",
   "target_name": "<target>",
   "psdcreate_bin": "psdcreate",
-  "psdscreen_bin": "psdscreen",
-  "query_format": "cdf",
   "num_threads": 4
 }

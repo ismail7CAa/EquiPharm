@@ -1,7 +1,9 @@
-"""CDPKit psdcreate/psdscreen baseline wrapper."""
+"""CDPKit/CDPL pharmacophore-alignment baseline wrapper."""
 
 from __future__ import annotations
 
+import shutil
+from collections.abc import Iterable
 from pathlib import Path
 
 try:
@@ -9,7 +11,6 @@ try:
         build_rows_from_scores,
         collect_labeled_sdf_files,
         discover_dude_targets,
-        first_sdf_mol,
         find_cdpkit_query,
         find_query_ligand,
         infer_target_name,
@@ -22,7 +23,6 @@ except ImportError:
         build_rows_from_scores,
         collect_labeled_sdf_files,
         discover_dude_targets,
-        first_sdf_mol,
         find_cdpkit_query,
         find_query_ligand,
         infer_target_name,
@@ -30,15 +30,6 @@ except ImportError:
         write_baseline_outputs,
         write_dataset_summary,
     )
-
-
-DEFAULT_SCORE_PROPERTIES = (
-    "score",
-    "Score",
-    "PHARM_SCORE",
-    "PHARMACOPHORE_SCORE",
-    "CDPL_SCREENING_SCORE",
-)
 
 
 def run_cdpkit_screening(
@@ -49,87 +40,68 @@ def run_cdpkit_screening(
     output_dir: str | Path,
     target_name: str | None = None,
     pipeline_name: str = "CDPKit",
-    psdcreate_bin: str = "psdcreate",
-    psdscreen_bin: str = "psdscreen",
+    psdcreate_bin: str | None = "psdcreate",
+    psdscreen_bin: str | None = None,
     query_format: str | None = None,
     num_threads: int | None = None,
     max_omitted: int | None = None,
     hit_score: float = 1.0,
     miss_score: float = 0.0,
-    score_properties: list[str] | tuple[str, ...] = DEFAULT_SCORE_PROPERTIES,
+    score_properties=None,
     limit: int | None = None,
 ) -> dict:
-    """Run CDPKit screening against DUD-E-style active/decoy directories.
+    """Run PharmacoMatch-style CDPL pharmacophore alignment.
 
-    The external CDPKit executables are invoked only when this function is called.
+    The public function name is kept for existing runners, but this no longer
+    calls CDPKit `psdscreen`. It creates active/decoy PSD files, aligns every
+    pharmacophore to the query with CDPL, max-pools alignment scores per
+    molecule, and writes the standard screening outputs.
     """
+    del psdscreen_bin, query_format, max_omitted, hit_score, score_properties
+
     query_path = Path(query_pharmacophore)
-    if query_path.suffix.lower() not in {".cdf", ".pml", ".psd"}:
-        raise ValueError("CDPKit psdscreen requires query_pharmacophore to be a .cdf, .pml, or .psd file.")
+    if query_path.suffix.lower() != ".pml":
+        raise ValueError("CDPL alignment requires query_pharmacophore to be a .pml file.")
 
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     target_name = target_name or infer_target_name(query_pharmacophore, actives_dir, decoys_dir, output_dir)
 
-    candidates = collect_labeled_sdf_files(actives_dir, decoys_dir, limit=limit)
-    combined_sdf = output_path / "cdpkit_input.sdf"
-    database_path = output_path / "cdpkit_screening_database.psd"
-    hits_sdf = output_path / "cdpkit_hits.sdf"
-    report_path = output_path / "cdpkit_report.txt"
+    active_candidates = collect_labeled_sdf_files(actives_dir, decoys_dir, limit=limit)
+    active_files = [path for path, label in active_candidates if label == 1]
+    decoy_files = [path for path, label in active_candidates if label == 0]
 
-    write_combined_sdf(candidates, combined_sdf)
+    raw_path = output_path / "raw"
+    preprocessing_path = output_path / "preprocessing"
+    vs_path = output_path / "vs"
+    raw_path.mkdir(parents=True, exist_ok=True)
+    preprocessing_path.mkdir(parents=True, exist_ok=True)
+    vs_path.mkdir(parents=True, exist_ok=True)
 
-    create_cmd = [
-        psdcreate_bin,
-        "-i",
-        str(combined_sdf),
-        "-o",
-        str(database_path),
-    ]
-    if num_threads is not None:
-        create_cmd.extend(["-t", str(num_threads)])
-    run_command(create_cmd)
+    local_query = raw_path / "query.pml"
+    if query_path.resolve() != local_query.resolve():
+        shutil.copyfile(query_path, local_query)
 
-    screen_cmd = [
-        psdscreen_bin,
-        "-d",
-        str(database_path),
-        "-q",
-        str(query_path),
-        "-o",
-        str(hits_sdf),
-        "-r",
-        str(report_path),
-        "-O",
-        "sdf",
-        "-S",
-        "true",
-        "-I",
-        "true",
-    ]
-    if query_format is not None:
-        screen_cmd.extend(["-Q", query_format])
-    if max_omitted is not None:
-        screen_cmd.extend(["-M", str(max_omitted)])
-    if num_threads is not None:
-        screen_cmd.extend(["-t", str(num_threads)])
-    run_command(screen_cmd)
+    actives_sdf = preprocessing_path / "actives.sdf"
+    inactives_sdf = preprocessing_path / "inactives.sdf"
+    actives_psd = raw_path / "actives.psd"
+    inactives_psd = raw_path / "inactives.psd"
 
-    scores = parse_hit_scores(hits_sdf, hit_score=hit_score, score_properties=score_properties)
-    
-    # Build score dictionary for every molecule.
-    # CDPKit hits keep their CDPKit score.
-    # Non-hits get miss_score.
-    # A tiny deterministic jitter breaks ties without using active/decoy labels
-    # and without changing the meaningful CDPKit ranking.
+    write_sdf_bundle(active_files, actives_sdf)
+    write_sdf_bundle(decoy_files, inactives_sdf)
+    resolved_psdcreate = resolve_psdcreate(psdcreate_bin)
+    create_psd_database(resolved_psdcreate, actives_sdf, actives_psd, num_threads=num_threads)
+    create_psd_database(resolved_psdcreate, inactives_sdf, inactives_psd, num_threads=num_threads)
+
+    active_scores = align_psd_to_query(local_query, actives_psd, vs_path / "all_actives_aligned.pt")
+    decoy_scores = align_psd_to_query(local_query, inactives_psd, vs_path / "all_inactives_aligned.pt")
+
     scored = {}
-    for sdf_path, _label in candidates:
-        name = sdf_path.stem
-        base_score = scores.get(name, miss_score)
-        scored[name] = float(base_score) + deterministic_jitter(name)
-    
+    scored.update(scores_by_file_stem(active_files, active_scores, default_score=miss_score))
+    scored.update(scores_by_file_stem(decoy_files, decoy_scores, default_score=miss_score))
+
     rows = build_rows_from_scores(
-        candidates,
+        active_candidates,
         scored,
         pipeline_name=pipeline_name,
         target_name=target_name,
@@ -138,24 +110,83 @@ def run_cdpkit_screening(
     return write_baseline_outputs(output_dir, rows, pipeline_name=pipeline_name, target_name=target_name)
 
 
+def score_cdpkit_alignment(
+    *,
+    query_pharmacophore: str | Path,
+    candidate_sdf: str | Path,
+    work_dir: str | Path,
+    psdcreate_bin: str | Path | None = "psdcreate",
+    num_threads: int | None = None,
+    default_score: float = 0.0,
+) -> float:
+    """Return the PharmacoMatch-style CDPL alignment score for one SDF file."""
+    scores = score_cdpkit_alignment_batch(
+        query_pharmacophore=query_pharmacophore,
+        candidate_sdfs=[candidate_sdf],
+        work_dir=work_dir,
+        psdcreate_bin=psdcreate_bin,
+        num_threads=num_threads,
+        default_score=default_score,
+    )
+    return float(scores[Path(candidate_sdf).stem])
+
+
+def score_cdpkit_alignment_batch(
+    *,
+    query_pharmacophore: str | Path,
+    candidate_sdfs: Iterable[str | Path],
+    work_dir: str | Path,
+    psdcreate_bin: str | Path | None = "psdcreate",
+    num_threads: int | None = None,
+    default_score: float = 0.0,
+) -> dict[str, float]:
+    """Return max-pooled CDPL pharmacophore alignment scores keyed by file stem.
+
+    This is the small functional API intended for reuse outside the screening
+    runner. It mirrors the CDPKit comparison used around PharmacoMatch:
+    generate ligand pharmacophores, align them to `query.pml`, score every
+    generated pharmacophore with CDPL's fit score, then keep the best score per
+    input molecule.
+    """
+    query_path = Path(query_pharmacophore)
+    if query_path.suffix.lower() != ".pml":
+        raise ValueError("CDPL alignment requires query_pharmacophore to be a .pml file.")
+
+    candidates = [Path(path) for path in candidate_sdfs]
+    if not candidates:
+        raise ValueError("candidate_sdfs must contain at least one SDF file.")
+
+    work_path = Path(work_dir)
+    work_path.mkdir(parents=True, exist_ok=True)
+    bundled_sdf = work_path / "candidates.sdf"
+    database_psd = work_path / "candidates.psd"
+    aligned_pt = work_path / "candidates_aligned.pt"
+
+    write_sdf_bundle(candidates, bundled_sdf)
+    resolved_psdcreate = resolve_psdcreate(psdcreate_bin)
+    create_psd_database(resolved_psdcreate, bundled_sdf, database_psd, num_threads=num_threads)
+    alignment_rows = align_psd_to_query(query_path, database_psd, aligned_pt)
+    return scores_by_file_stem(candidates, alignment_rows, default_score=default_score)
+
+
 def run_cdpkit_dataset_screening(
     *,
     dataset_dir: str | Path,
     output_dir: str | Path,
     query_dir: str | Path | None = None,
     pipeline_name: str = "CDPKit",
-    psdcreate_bin: str = "psdcreate",
-    psdscreen_bin: str = "psdscreen",
+    psdcreate_bin: str | None = "psdcreate",
+    psdscreen_bin: str | None = None,
     query_format: str | None = None,
     num_threads: int | None = None,
     max_omitted: int | None = None,
     hit_score: float = 1.0,
     miss_score: float = 0.0,
-    score_properties: list[str] | tuple[str, ...] = DEFAULT_SCORE_PROPERTIES,
+    score_properties=None,
     limit: int | None = None,
     skip_missing_queries: bool = False,
 ) -> dict:
-    """Run CDPKit on every DUD-E-style target and write one summary CSV."""
+    """Run CDPL alignment on every DUD-E-style target and write one summary CSV."""
     output_path = Path(output_dir)
     metrics_rows = []
 
@@ -175,13 +206,13 @@ def run_cdpkit_dataset_screening(
                         "pipeline": pipeline_name,
                         "target": target_name,
                         "status": "skipped",
-                        "error": "missing CDPKit query pharmacophore",
+                        "error": "missing CDPL query pharmacophore",
                     }
                 )
                 continue
             raise FileNotFoundError(
-                f"No CDPKit query pharmacophore found for {target_name}. "
-                "Expected query.cdf, query.pml, query.psd, crystal_ligand.cdf, or crystal_ligand.pml."
+                f"No CDPL query pharmacophore found for {target_name}. "
+                "Expected query.pml or crystal_ligand.pml, or a query ligand to generate query.pml."
             )
 
         try:
@@ -226,20 +257,20 @@ def run_cdpkit_dataset_screening(
 
 
 def ensure_cdpkit_query(target_dir: str | Path, *, query_pharmacophore: str | Path | None = None) -> Path:
-    """Return an existing CDPKit query or generate query.pml from the target ligand."""
+    """Return an existing CDPL query or generate query.pml from the target ligand."""
     if query_pharmacophore is not None:
         return Path(query_pharmacophore)
 
     target_path = Path(target_dir)
     query_path = find_cdpkit_query(target_path)
     if query_path is not None:
+        if query_path.suffix.lower() != ".pml":
+            raise ValueError(f"CDPL alignment requires a .pml query, got: {query_path}")
         return query_path
 
     ligand_path = find_query_ligand(target_path)
     if ligand_path is None:
-        raise FileNotFoundError(
-            f"No CDPKit query pharmacophore or query ligand found in {target_path}."
-        )
+        raise FileNotFoundError(f"No query pharmacophore or query ligand found in {target_path}.")
 
     generated_query = target_path / "query.pml"
     if not generated_query.exists():
@@ -253,7 +284,7 @@ def create_ligand_query_pharmacophore(ligand_path: str | Path, output_path: str 
         import CDPL.Chem as Chem
         import CDPL.Pharm as Pharm
     except ImportError as exc:
-        raise RuntimeError("Generating CDPKit query.pml requires Python CDPL. Install it with `pip install CDPKit`.") from exc
+        raise RuntimeError("Generating query.pml requires Python CDPL. Install CDPKit.") from exc
 
     ligand_path = Path(ligand_path)
     output_path = Path(output_path)
@@ -277,6 +308,157 @@ def create_ligand_query_pharmacophore(ligand_path: str | Path, output_path: str 
     return output_path
 
 
+def resolve_psdcreate(psdcreate_bin: str | Path | None) -> Path | None:
+    """Return psdcreate if available, otherwise use the Python CDPL fallback."""
+    if psdcreate_bin is None:
+        return None
+    path = Path(psdcreate_bin)
+    if path.name == "psdcreate" and path.exists():
+        return path
+    if path.is_dir() and (path / "psdcreate").exists():
+        return path / "psdcreate"
+    executable = shutil.which(str(psdcreate_bin))
+    if executable:
+        return Path(executable)
+    try:
+        import CDPL.Chem  # noqa: F401
+        import CDPL.Pharm  # noqa: F401
+    except ImportError as exc:
+        raise FileNotFoundError(
+            "CDPKit psdcreate was not found and Python CDPL is not importable. "
+            "Install CDPKit, add psdcreate to PATH, or pass --psdcreate-bin."
+        ) from exc
+    return None
+
+
+def create_psd_database(
+    psdcreate: Path | None,
+    input_sdf: Path,
+    output_psd: Path,
+    *,
+    num_threads: int | None = None,
+) -> None:
+    """Create a CDPL pharmacophore screening database."""
+    if psdcreate is not None:
+        command = [str(psdcreate), "-i", str(input_sdf), "-o", str(output_psd), "-d"]
+        if num_threads is not None:
+            command.extend(["-t", str(num_threads)])
+        run_command(command)
+        return
+    create_psd_with_cdpl_python(input_sdf, output_psd)
+
+
+def create_psd_with_cdpl_python(input_sdf: Path, output_psd: Path) -> None:
+    """Create a PSD file with Python CDPL when psdcreate is unavailable."""
+    try:
+        import CDPL.Chem as Chem
+        import CDPL.Pharm as Pharm
+    except ImportError as exc:
+        raise RuntimeError("Creating PSD files without psdcreate requires Python CDPL.") from exc
+
+    reader = cdpl_molecule_reader(str(input_sdf), Chem)
+    Chem.setMultiConfImportParameter(reader, False)
+    writer = cdpl_pharmacophore_writer(str(output_psd), Pharm)
+    generator = Pharm.DefaultPharmacophoreGenerator()
+    molecule = Chem.BasicMolecule()
+    pharmacophore = Pharm.BasicPharmacophore()
+
+    while reader.read(molecule):
+        pharmacophore.clear()
+        Pharm.prepareForPharmacophoreGeneration(molecule)
+        generator.generate(molecule, pharmacophore)
+        if pharmacophore.getNumFeatures() == 0:
+            continue
+        Pharm.setName(pharmacophore, Chem.getName(molecule).strip())
+        if not writer.write(pharmacophore):
+            raise RuntimeError(f"Could not write pharmacophore to {output_psd}")
+
+
+def align_psd_to_query(query_pml: Path, input_psd: Path, output_pt: Path) -> list[dict]:
+    """Align every PSD pharmacophore to query.pml and return raw scores."""
+    try:
+        import CDPL.Pharm as Pharm
+        import torch
+    except ImportError as exc:
+        raise RuntimeError("CDPL alignment requires Python CDPKit and torch.") from exc
+
+    ref_ph4 = read_reference_pharmacophore(query_pml, Pharm)
+    clear_feature_orientations(ref_ph4, Pharm)
+    db_accessor = Pharm.PSDScreeningDBAccessor(str(input_psd))
+    mol_ph4 = Pharm.BasicPharmacophore()
+    alignment = Pharm.PharmacophoreAlignment(True)
+    alignment.addFeatures(ref_ph4, True)
+    alignment.performExhaustiveSearch(False)
+    fit_score = Pharm.PharmacophoreFitScore(
+        match_cnt_weight=1.0,
+        pos_match_weight=0.9,
+        geom_match_weight=0.0,
+    )
+
+    rows = []
+    for index in range(db_accessor.getNumPharmacophores()):
+        db_accessor.getPharmacophore(index, mol_ph4)
+        mol_idx = int(db_accessor.getMoleculeIndex(index))
+        conf_idx = int(db_accessor.getConformationIndex(index))
+        if mol_ph4.getNumFeatures() == 0:
+            rows.append([0.0, 0.0, 0, mol_idx, conf_idx])
+            continue
+
+        clear_feature_orientations(mol_ph4, Pharm)
+        alignment.clearEntities(False)
+        alignment.addFeatures(mol_ph4, False)
+        solutions = []
+        while alignment.nextAlignment():
+            solutions.append(float(fit_score(ref_ph4, mol_ph4, alignment.getTransform())))
+        best_score = max(solutions) if solutions else 0.0
+        rows.append(
+            [
+                float(int(best_score)),
+                float(best_score % 1.0),
+                float(mol_ph4.getNumFeatures()),
+                float(mol_idx),
+                float(conf_idx),
+            ]
+        )
+
+    output_pt.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(torch.tensor(rows, dtype=torch.float32), output_pt)
+    return [
+        {
+            "score": row[0] + row[1],
+            "num_features": int(row[2]),
+            "mol_idx": int(row[3]),
+            "conf_idx": int(row[4]),
+        }
+        for row in rows
+    ]
+
+
+def scores_by_file_stem(files: list[Path], rows: list[dict], *, default_score: float = 0.0) -> dict[str, float]:
+    """Max-pool pharmacophore alignment scores by original SDF file stem."""
+    scores = {path.stem: float(default_score) for path in files}
+    for row in rows:
+        mol_idx = row["mol_idx"]
+        if 0 <= mol_idx < len(files):
+            name = files[mol_idx].stem
+            scores[name] = max(scores[name], float(row["score"]))
+    return scores
+
+
+def read_reference_pharmacophore(filename: Path, Pharm):
+    reader = Pharm.PharmacophoreReader(str(filename))
+    pharmacophore = Pharm.BasicPharmacophore()
+    if not reader.read(pharmacophore):
+        raise ValueError(f"Could not read reference pharmacophore: {filename}")
+    return pharmacophore
+
+
+def clear_feature_orientations(pharmacophore, Pharm) -> None:
+    for feature in pharmacophore:
+        Pharm.clearOrientation(feature)
+        Pharm.setGeometry(feature, Pharm.FeatureGeometry.SPHERE)
+
+
 def cdpl_molecule_reader(filename: str, Chem):
     suffix = Path(filename).suffix.lower().lstrip(".")
     handler = Chem.MoleculeIOManager.getInputHandlerByFileExtension(suffix)
@@ -293,72 +475,10 @@ def cdpl_pharmacophore_writer(filename: str, Pharm):
     return handler.createWriter(filename)
 
 
-def write_combined_sdf(candidates: list[tuple[Path, int]], output_path: Path) -> None:
-    from rdkit import Chem
-
-    writer = Chem.SDWriter(str(output_path))
-    try:
-        for sdf_path, label in candidates:
-            mol = first_sdf_mol(sdf_path)
-            mol.SetProp("_Name", sdf_path.stem)
-            mol.SetProp("label", str(label))
-            mol.SetProp("source_path", str(sdf_path))
-            writer.write(mol)
-    finally:
-        writer.close()
-
-
-def parse_hit_scores(
-    hits_sdf: Path,
-    *,
-    hit_score: float,
-    score_properties: list[str] | tuple[str, ...],
-) -> dict[str, float]:
-    from pathlib import Path
-    from rdkit import Chem
-
-    hits_sdf = Path(hits_sdf)
-
-    # CDPKit can produce an empty hits file when no molecules match.
-    # RDKit SDMolSupplier can crash or behave badly on a 0-byte SDF.
-    if not hits_sdf.exists() or hits_sdf.stat().st_size == 0:
-        print(f"[WARN] CDPKit produced no hits or empty hits file: {hits_sdf}")
-        return {}
-
-    scores = {}
-    supplier = Chem.SDMolSupplier(str(hits_sdf), sanitize=False, removeHs=False)
-
-    for mol in supplier:
-        if mol is None:
-            continue
-
-        name = mol.GetProp("_Name") if mol.HasProp("_Name") else None
-        if not name:
-            continue
-
-        scores[name] = get_score_property(mol, score_properties, default=hit_score)
-
-    return scores
-
-
-def get_score_property(
-    mol,
-    score_properties: list[str] | tuple[str, ...],
-    *,
-    default: float,
-) -> float:
-    for prop_name in score_properties:
-        if mol.HasProp(prop_name):
-            try:
-                return float(mol.GetProp(prop_name))
-            except ValueError:
-                pass
-    return float(default)
-
-    
-def deterministic_jitter(name: str, scale: float = 1e-12) -> float:
-    import hashlib
-
-    digest = hashlib.md5(name.encode("utf-8")).hexdigest()
-    value = int(digest[:12], 16) / float(16**12)
-    return value * scale
+def write_sdf_bundle(files: list[Path], output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("wb") as output:
+        for sdf_file in files:
+            with sdf_file.open("rb") as handle:
+                shutil.copyfileobj(handle, output)
+            output.write(b"\n")

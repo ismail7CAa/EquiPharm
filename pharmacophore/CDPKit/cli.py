@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""CLI for the optional CDPKit pharmacophore-screening baseline."""
+"""CLI for the optional CDPKit/CDPL pharmacophore-alignment baseline."""
 
 from __future__ import annotations
 
@@ -14,19 +14,19 @@ except ImportError:
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Run the CDPKit psdscreen baseline.")
+    parser = argparse.ArgumentParser(description="Run the CDPKit/CDPL pharmacophore-alignment baseline.")
     parser.add_argument("--config", type=Path, help="JSON config file.")
     parser.add_argument("--dataset-dir", type=Path, help="DUD-E-style dataset root containing one directory per target.")
-    parser.add_argument("--target-dir", type=Path, help="Directory with actives_sdf, decoys_sdf, and optionally query.cdf/query.pml.")
+    parser.add_argument("--target-dir", type=Path, help="Directory with actives_sdf, decoys_sdf, and optionally query.pml.")
     parser.add_argument("--query-dir", type=Path, help="Optional root with one query folder per target for dataset runs.")
-    parser.add_argument("--query-pharmacophore", type=Path, help="CDPKit query pharmacophore, e.g. .cdf or .pml.")
+    parser.add_argument("--query-pharmacophore", type=Path, help="CDPL query pharmacophore, expected as .pml.")
     parser.add_argument("--actives-dir", type=Path)
     parser.add_argument("--decoys-dir", type=Path)
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--target-name")
     parser.add_argument("--psdcreate-bin", default=None)
-    parser.add_argument("--psdscreen-bin", default=None)
-    parser.add_argument("--query-format")
+    parser.add_argument("--psdscreen-bin", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--query-format", help=argparse.SUPPRESS)
     parser.add_argument("--num-threads", type=int)
     parser.add_argument("--max-omitted", type=int, default=None)
     parser.add_argument("--skip-missing-queries", action="store_true")
@@ -84,8 +84,8 @@ def main() -> None:
     missing = [key for key in required if key not in config]
     if missing:
         raise SystemExit(f"Missing required settings: {', '.join(missing)}")
-    if Path(config["query_pharmacophore"]).suffix.lower() not in {".cdf", ".pml", ".psd"}:
-        raise SystemExit("CDPKit psdscreen requires query_pharmacophore to be a .cdf, .pml, or .psd file.")
+    if Path(config["query_pharmacophore"]).suffix.lower() != ".pml":
+        raise SystemExit("CDPKit/CDPL alignment requires query_pharmacophore to be a .pml file.")
 
     metrics = run_cdpkit_screening(**config)
     print(json.dumps(metrics, indent=2, sort_keys=True))

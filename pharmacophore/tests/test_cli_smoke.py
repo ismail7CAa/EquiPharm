@@ -268,17 +268,26 @@ class PipelineWrapperTests(unittest.TestCase):
         self.assertEqual(kwargs["model_module"], "benchmarking.Methods.equiformer_architecture")
         self.assertFalse(kwargs["use_pharmacophore_features"])
 
-    def test_cdpkit_wrapper_builds_expected_commands(self):
+    def test_cdpkit_wrapper_runs_cdpl_alignment_and_pools_scores(self):
         candidates = [(Path("active_0001.sdf"), 1), (Path("decoy_0001.sdf"), 0)]
         with (
             patch.object(cdpkit_screening, "collect_labeled_sdf_files", return_value=candidates),
-            patch.object(cdpkit_screening, "write_combined_sdf") as write_sdf,
-            patch.object(cdpkit_screening, "run_command") as run_command,
-            patch.object(cdpkit_screening, "parse_hit_scores", return_value={"active_0001": 2.0}),
+            patch.object(cdpkit_screening, "shutil") as shutil_mock,
+            patch.object(cdpkit_screening, "write_sdf_bundle") as write_bundle,
+            patch.object(cdpkit_screening, "resolve_psdcreate", return_value=Path("psdcreate")),
+            patch.object(cdpkit_screening, "create_psd_database") as create_psd,
+            patch.object(
+                cdpkit_screening,
+                "align_psd_to_query",
+                side_effect=[
+                    [{"score": 2.5, "mol_idx": 0, "conf_idx": 0}],
+                    [{"score": 0.25, "mol_idx": 0, "conf_idx": 0}],
+                ],
+            ) as align,
             patch.object(cdpkit_screening, "write_baseline_outputs", return_value={"roc_auc": 1.0}) as write_outputs,
         ):
             result = cdpkit_screening.run_cdpkit_screening(
-                query_pharmacophore="query.cdf",
+                query_pharmacophore="query.pml",
                 actives_dir="actives_sdf",
                 decoys_dir="decoys_sdf",
                 output_dir="pharmacophore/results/CDPKit/aces",
@@ -286,12 +295,63 @@ class PipelineWrapperTests(unittest.TestCase):
             )
 
         self.assertEqual(result, {"roc_auc": 1.0})
-        self.assertTrue(write_sdf.called)
-        self.assertEqual(run_command.call_count, 2)
+        self.assertTrue(shutil_mock.copyfile.called)
+        self.assertEqual(write_bundle.call_count, 2)
+        self.assertEqual(create_psd.call_count, 2)
+        self.assertEqual(align.call_count, 2)
         rows = write_outputs.call_args.args[1]
         self.assertEqual(rows[0]["pipeline"], "CDPKit")
-        self.assertAlmostEqual(rows[0]["score"], 2.0, places=9)
-        self.assertAlmostEqual(rows[1]["score"], 0.0, places=9)
+        self.assertAlmostEqual(rows[0]["score"], 2.5, places=9)
+        self.assertAlmostEqual(rows[1]["score"], 0.25, places=9)
+
+    def test_cdpkit_functional_batch_api_returns_scores_by_file_stem(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            work_dir = Path(tmpdir) / "work"
+            first = Path(tmpdir) / "mol_a.sdf"
+            second = Path(tmpdir) / "mol_b.sdf"
+            first.write_text("a\n$$$$\n", encoding="utf-8")
+            second.write_text("b\n$$$$\n", encoding="utf-8")
+
+            with (
+                patch.object(cdpkit_screening, "write_sdf_bundle") as write_bundle,
+                patch.object(cdpkit_screening, "resolve_psdcreate", return_value=None),
+                patch.object(cdpkit_screening, "create_psd_database") as create_psd,
+                patch.object(
+                    cdpkit_screening,
+                    "align_psd_to_query",
+                    return_value=[
+                        {"score": 1.0, "mol_idx": 0, "conf_idx": 0},
+                        {"score": 2.0, "mol_idx": 0, "conf_idx": 1},
+                        {"score": 0.5, "mol_idx": 1, "conf_idx": 0},
+                    ],
+                ) as align,
+            ):
+                scores = cdpkit_screening.score_cdpkit_alignment_batch(
+                    query_pharmacophore="query.pml",
+                    candidate_sdfs=[first, second],
+                    work_dir=work_dir,
+                    psdcreate_bin=None,
+                )
+
+        self.assertEqual(scores, {"mol_a": 2.0, "mol_b": 0.5})
+        self.assertTrue(write_bundle.called)
+        self.assertTrue(create_psd.called)
+        self.assertTrue(align.called)
+
+    def test_cdpkit_functional_single_api_returns_one_score(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            candidate = Path(tmpdir) / "mol_a.sdf"
+            candidate.write_text("a\n$$$$\n", encoding="utf-8")
+
+            with patch.object(cdpkit_screening, "score_cdpkit_alignment_batch", return_value={"mol_a": 3.25}) as batch:
+                score = cdpkit_screening.score_cdpkit_alignment(
+                    query_pharmacophore="query.pml",
+                    candidate_sdf=candidate,
+                    work_dir=Path(tmpdir) / "work",
+                )
+
+        self.assertEqual(score, 3.25)
+        self.assertEqual(batch.call_args.kwargs["candidate_sdfs"], [candidate])
 
     def test_cdpkit_dataset_wrapper_writes_summary(self):
         targets = [Path("data/DUD-E/aces"), Path("data/DUD-E/egfr")]
@@ -580,7 +640,7 @@ class CliConfigTests(unittest.TestCase):
 
     def test_cdpkit_cli_reads_config_without_running_external_tools(self):
         config = {
-            "query_pharmacophore": "data/CDPKit/aces/query.cdf",
+            "query_pharmacophore": "data/CDPKit/aces/query.pml",
             "actives_dir": "data/DUD-E/aces/actives_sdf",
             "decoys_dir": "data/DUD-E/aces/decoys_sdf",
             "output_dir": "pharmacophore/results/CDPKit/aces",

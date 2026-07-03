@@ -10,10 +10,7 @@ from pathlib import Path
 
 
 TARGET_QUERY_NAMES = (
-    "query.cdf",
     "query.pml",
-    "query.psd",
-    "crystal_ligand.cdf",
     "crystal_ligand.pml",
 )
 
