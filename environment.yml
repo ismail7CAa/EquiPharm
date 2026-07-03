@@ -1,4 +1,4 @@
-name: /data/db6/Izzy/EquiPharm/equipharm
+name: equipharm
 channels:
   - conda-forge
 dependencies:
@@ -15,24 +15,21 @@ dependencies:
   - scipy
   - tensorboard
   - tqdm
-  - cmake
-  - compilers
-  - make
-  - boost-cpp
-  - openbabel
-  - jsoncpp
-  - eigen
-  - lemon
-  - curl
-  - gperftools
-  - libcurl
-  - pkg-config
-  - fcgi2
-  - ann
-  - autoconf
-  - automake
-  - libtool
-  - m4
-  - perl
-  - coin-or-cbc
-  - coin-or-clp
+  - pip:
+      # PyTorch with CUDA 12.8 for Blackwell GPUs
+      - --index-url=https://download.pytorch.org/whl/cu128
+      - torch==2.7.0
+      - torchvision==0.22.0
+      - torchaudio==2.7.0
+
+      # return to normal PyPI for the rest
+      - --extra-index-url=https://pypi.org/simple
+
+      # PyTorch Geometric
+      - torch-geometric
+
+      # Model and CDPL/CDPKit libraries
+      - equiformer-pytorch
+      - se3-transformer-pytorch
+      - dive-into-graphs
+      - CDPKit
