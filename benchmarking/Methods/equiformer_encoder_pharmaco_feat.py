@@ -49,7 +49,7 @@ class EquiformerQM9(nn.Module):
 
             heads=4,
             dim_head=hidden_dim // 4,   # 32 when hidden_dim=128
-            depth=4, 
+            depth=6, 
 
             # --- key efficiency / "molecular graph" knobs ---
             attend_sparse_neighbors=True,  # requires adj_mat
