@@ -3,12 +3,12 @@
 This document is the external handoff for using the CDPKit baseline as the
 CDPL pharmacophore-alignment version used in the PharmacoMatch comparison.
 
-It is intended for another project or an AI agent that needs a ready function
+It is intended for this project as well as other projects as function 
 or command-line workflow.
 
 ## What This Is
 
-This is not the old `psdscreen` hit-only workflow.
+This is not the `psdscreen` hit-only workflow.
 
 The current wrapper follows the PharmacoMatch-style CDPL alignment path:
 
@@ -37,7 +37,7 @@ pharmacophore/CDPKit/__init__.py
 
 ### Fresh Machine Setup
 
-For the boss or an external AI agent, the required code is this repository plus
+The required code is this repository plus
 the CDPKit/CDPL Python package. The PharmacoMatch repository is not required for
 the function API below; this project already wraps the same CDPL alignment idea.
 
@@ -383,7 +383,7 @@ Higher `score` is better.
 
 ## Minimal AI Agent Contract
 
-If an AI agent needs to call CDPKit/CDPL scoring, use this contract.
+For AI - Agent to call CDPKit/CDPL, use this:
 
 Input:
 
@@ -519,5 +519,5 @@ For one molecule, use:
 from pharmacophore.CDPKit import score_cdpkit_alignment
 ```
 
-For production or agent workflows, prefer the batch function because it avoids
+For production workflows, prefer the batch function because it avoids
 recreating setup work separately for every candidate.
