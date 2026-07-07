@@ -20,6 +20,19 @@ The current wrapper follows the PharmacoMatch-style CDPL alignment path:
 6. Max-pool scores per input molecule.
 7. Return one continuous score per molecule.
 
+This is the same scoring idea used by:
+
+```text
+scripts/run_cdpkit_pharmacomatch_all_dude.sh
+```
+
+but exposed as maintained project code and importable functions. The shell
+script runs PharmacoMatch's `PharmacophoreAlignment` over already-prepared
+PharmacoMatch PSD files. The function API below reimplements the same CDPL
+alignment/scoring logic directly in `pharmacophore/CDPKit/screening.py`, so an
+external agent can call it without using `psdscreen` and without depending on
+the shell script.
+
 The code lives in:
 
 ```text
@@ -31,6 +44,96 @@ The importable API is exported from:
 
 ```text
 pharmacophore/CDPKit/__init__.py
+```
+
+Explicit module layout:
+
+```text
+pharmacophore/CDPKit/screening.py
+  Contains the real CDPL alignment logic and the Python function API:
+    - score_cdpkit_alignment(...)
+    - score_cdpkit_alignment_batch(...)
+    - run_cdpkit_screening(...)
+    - run_cdpkit_dataset_screening(...)
+
+pharmacophore/CDPKit/__init__.py
+  Re-exports the function API so external code can import:
+    from pharmacophore.CDPKit import score_cdpkit_alignment_batch
+
+pharmacophore/CDPKit/cli.py
+  Command-line wrapper only. It parses CLI arguments and calls functions from
+  screening.py. The scoring functions are not defined in cli.py.
+```
+
+## Alignment Scoring Logic
+
+This section is the important part for an AI agent or external project.
+
+The old script:
+
+```text
+scripts/run_cdpkit_pharmacomatch_all_dude.sh
+```
+
+does the following:
+
+1. Loads PharmacoMatch-prepared folders:
+
+```text
+external/PharmacoMatch/data/DUD-E/<target>/
+  raw/query.pml
+  raw/actives.psd
+  raw/inactives.psd
+```
+
+2. Runs CDPL pharmacophore alignment and writes:
+
+```text
+vs/all_actives_aligned.pt
+vs/all_inactives_aligned.pt
+```
+
+3. Computes the pharmacophore score from the aligned tensor as:
+
+```python
+score = aligned[:, 0] + aligned[:, 1]
+mol_id = aligned[:, 3]
+```
+
+4. Max-pools scores by molecule id:
+
+```python
+best_score_for_molecule = max(scores_for_all_generated_pharmacophores)
+```
+
+The function API uses the same scoring semantics:
+
+```text
+candidate SDF -> candidate PSD -> CDPL alignment to query.pml
+              -> raw alignment rows -> score = row[0] + row[1]
+              -> max-pool by molecule -> one score per SDF stem
+```
+
+The implementation is:
+
+```text
+create_psd_database(...)
+align_psd_to_query(...)
+scores_by_file_stem(...)
+score_cdpkit_alignment(...)
+score_cdpkit_alignment_batch(...)
+```
+
+in:
+
+```text
+pharmacophore/CDPKit/screening.py
+```
+
+So the recommended reusable function is not `psdscreen`; it is:
+
+```python
+from pharmacophore.CDPKit import score_cdpkit_alignment_batch
 ```
 
 ## Environment Setup
@@ -278,6 +381,52 @@ Use `default_score=0.0` for missing or unscored molecules unless the external
 project needs a different fallback.
 
 ## CLI Commands
+
+### Run The Existing PharmacoMatch-Prepared DUD-E Script
+
+Use this script when the dataset is already prepared in the PharmacoMatch
+layout under:
+
+```text
+external/PharmacoMatch/data/DUD-E/<target>/
+  raw/query.pml
+  raw/actives.psd
+  raw/inactives.psd
+```
+
+Command:
+
+```bash
+bash scripts/run_cdpkit_pharmacomatch_all_dude.sh
+```
+
+Important: this script is currently project-machine specific. At the top of
+the script, update `ROOT` if the repository is not located at the hardcoded
+path:
+
+```bash
+ROOT="/data/db6/Izzy/EquiPharm"
+```
+
+The script runs:
+
+```text
+scripts/run_pharmacomatch_cdpkit_alignment.py
+scripts/eval_pharmacomatch_cdpkit_alignment.py
+```
+
+and writes:
+
+```text
+pharmacophore/results/CDPKit_PharmacoMatchAlignment/<target>/metrics.json
+pharmacophore/results/CDPKit_PharmacoMatchAlignment_logs/
+```
+
+Use this script specifically to reproduce the CDPKit/CDPL alignment baseline on
+the PharmacoMatch-prepared DUD-E folders.
+
+Use the `python -m pharmacophore.CDPKit.cli ...` commands below when starting
+from normal DUD-E target folders with `actives_sdf/` and `decoys_sdf/`.
 
 ### Run One Target
 
