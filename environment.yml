@@ -27,8 +27,16 @@ dependencies:
 
       # PyTorch Geometric
       - torch-geometric
+      # Compiled PyG operators used by the authors' Equiformer implementation.
+      # Wheels must match torch 2.7.0 and CUDA 12.8.
+      - --find-links=https://data.pyg.org/whl/torch-2.7.0+cu128.html
+      - torch-scatter
+      - torch-cluster
 
       # Model and CDPL/CDPKit libraries
+      # The original Equiformer source was written against this e3nn API.
+      - e3nn==0.4.4
+      - timm==0.4.12
       - equiformer-pytorch
       - se3-transformer-pytorch
       - dive-into-graphs
