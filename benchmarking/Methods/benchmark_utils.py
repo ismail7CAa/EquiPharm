@@ -50,6 +50,47 @@ PROPERTY_NAMES = [
     "C (GHz)",
 ]
 
+# Stable, shell-friendly names for selecting QM9 targets from the CLI.  Their
+# order is the same as torch_geometric.datasets.QM9.data.y.
+TARGET_NAMES = [
+    "dipole_moment",
+    "polarizability",
+    "homo",
+    "lumo",
+    "homo_lumo_gap",
+    "electronic_spatial_extent",
+    "zpve",
+    "u0",
+    "u",
+    "h",
+    "g",
+    "heat_capacity",
+    "u0_atom",
+    "u_atom",
+    "h_atom",
+    "g_atom",
+    "rotational_constant_a",
+    "rotational_constant_b",
+    "rotational_constant_c",
+]
+
+TARGET_PRESETS = {
+    "all": TARGET_NAMES,
+    "electronic": [
+        "dipole_moment",
+        "polarizability",
+        "homo",
+        "lumo",
+        "homo_lumo_gap",
+        "electronic_spatial_extent",
+    ],
+    "geometry": [
+        "rotational_constant_a",
+        "rotational_constant_b",
+        "rotational_constant_c",
+    ],
+}
+
 
 @dataclass(frozen=True)
 class BenchmarkConfig:
@@ -78,11 +119,22 @@ class BenchmarkConfig:
     seed: int
     split_seed: int
     seeds: list[int] | None
+    vary_split_seed: bool
     train_size: int
     valid_size: int
     device: str
     resume_from: Path | None
     auto_resume: bool
+    target_preset: str
+    target: str | None
+
+
+def resolve_targets(config: BenchmarkConfig) -> tuple[list[int], list[str], list[str]]:
+    """Resolve a target preset or a single target to indices and display names."""
+    selected = [config.target] if config.target is not None else TARGET_PRESETS[config.target_preset]
+    indices = [TARGET_NAMES.index(name) for name in selected]
+    display_names = [PROPERTY_NAMES[index] for index in indices]
+    return indices, list(selected), display_names
 
 
 def get_qm9_conversions_tensor(device: torch.device | str) -> torch.Tensor:
@@ -133,8 +185,9 @@ def load_qm9_splits(config: BenchmarkConfig):
     valid_idx = perm[config.train_size : config.train_size + config.valid_size]
     test_idx = perm[config.train_size + config.valid_size :]
 
-    y_raw_all = dataset.data.y.clone().cpu()
-    conversions_cpu = get_qm9_conversions_tensor("cpu")
+    target_indices, _, _ = resolve_targets(config)
+    y_raw_all = dataset.data.y[:, target_indices].clone().cpu()
+    conversions_cpu = get_qm9_conversions_tensor("cpu")[target_indices]
     y_conv_all = y_raw_all * conversions_cpu.unsqueeze(0)
 
     norm_stats = {"mean": [], "std": []}
@@ -154,11 +207,16 @@ def load_qm9_splits(config: BenchmarkConfig):
     return dataset, dataset[train_idx], dataset[valid_idx], dataset[test_idx], norm_stats
 
 
-def write_best_metrics(path: Path, best_val: list[float], best_test: list[float]) -> None:
+def write_best_metrics(
+    path: Path,
+    property_names: list[str],
+    best_val: list[float],
+    best_test: list[float],
+) -> None:
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         writer.writerow(["target", "val_MAE", "test_MAE"])
-        writer.writerows(zip(PROPERTY_NAMES, best_val, best_test))
+        writer.writerows(zip(property_names, best_val, best_test))
 
 
 def write_seed_summary(path: Path, seed_results: list[dict[str, float | int | str]]) -> None:
@@ -270,8 +328,19 @@ def load_training_checkpoint(
     optimizer,
     scheduler,
     device: torch.device,
+    config: BenchmarkConfig,
 ) -> dict:
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    checkpoint_config = checkpoint.get("config", {})
+    checkpoint_target = checkpoint_config.get("target")
+    checkpoint_preset = checkpoint_config.get("target_preset", "all")
+    if (checkpoint_target, checkpoint_preset) != (config.target, config.target_preset):
+        raise ValueError(
+            "Resume checkpoint target selection does not match this run: "
+            f"checkpoint target={checkpoint_target!r}, preset={checkpoint_preset!r}; "
+            f"run target={config.target!r}, preset={config.target_preset!r}. "
+            "Use the matching target arguments or a different --output-dir."
+        )
     model.load_state_dict(checkpoint["model_state_dict"])
 
     ema_state = checkpoint.get("model_ema_state_dict")
@@ -396,6 +465,7 @@ def train_single_baseline(
     log_dir.mkdir(parents=True, exist_ok=True)
     write_run_config(config.output_dir / "config.json", config)
 
+    target_indices, target_names, property_names = resolve_targets(config)
     dataset, train_dataset, valid_dataset, test_dataset, norm_stats = load_qm9_splits(config)
     print(f"Using device: {device}")
     print(f"Total QM9 molecules: {len(dataset)}")
@@ -415,7 +485,7 @@ def train_single_baseline(
         dataset.num_node_features,
         config.hidden_dim,
         config.dropout,
-        len(PROPERTY_NAMES),
+        len(target_indices),
         config.drop_path,
     ).to(device)
 
@@ -424,8 +494,8 @@ def train_single_baseline(
     model_ema = ModelEma(model, config.model_ema_decay) if config.model_ema else None
 
     best_mean_val = float("inf")
-    best_val = [float("inf")] * len(PROPERTY_NAMES)
-    best_test = [float("inf")] * len(PROPERTY_NAMES)
+    best_val = [float("inf")] * len(target_indices)
+    best_test = [float("inf")] * len(target_indices)
     start_epoch = 1
 
     resume_checkpoint = resolve_resume_checkpoint(config, checkpoint_dir)
@@ -440,6 +510,7 @@ def train_single_baseline(
             optimizer=optimizer,
             scheduler=scheduler,
             device=device,
+            config=config,
         )
         start_epoch = int(checkpoint["epoch"]) + 1
         best_val = checkpoint.get("best_val", best_val)
@@ -451,7 +522,10 @@ def train_single_baseline(
         )
 
     print(f"#params: {sum(p.numel() for p in model.parameters()):,}")
-    print(f"Training {config.model_name} for all 19 QM9 targets")
+    print(
+        f"Training {config.model_name} for {len(target_names)} QM9 target(s): "
+        + ", ".join(target_names)
+    )
     print(
         "Optimization: "
         f"{config.optimizer}, opt_eps={config.opt_eps}, scheduler={config.scheduler}, lr={config.lr}, "
@@ -479,7 +553,7 @@ def train_single_baseline(
             writer.add_scalar(f"train/loss_{config.loss}", train_loss, epoch)
             print(f"Train loss ({config.loss.upper()}): {train_loss:.6f}")
 
-            for target_idx, prop in enumerate(PROPERTY_NAMES):
+            for target_idx, prop in enumerate(property_names):
                 metric_name = safe_metric_name(prop)
                 writer.add_scalar(f"val_mae/{metric_name}", val_mae[target_idx], epoch)
                 writer.add_scalar(f"test_mae/{metric_name}", test_mae[target_idx], epoch)
@@ -495,7 +569,12 @@ def train_single_baseline(
                 best_val = val_mae
                 best_test = test_mae
                 best_improved = True
-                write_best_metrics(config.output_dir / "best_val_test_mae.csv", best_val, best_test)
+                write_best_metrics(
+                    config.output_dir / "best_val_test_mae.csv",
+                    property_names,
+                    best_val,
+                    best_test,
+                )
 
             scheduler.step()
             checkpoint_payload = build_checkpoint_payload(
@@ -519,7 +598,7 @@ def train_single_baseline(
 
     print("\nFinished training.")
     print("Best validation and test MAEs per property:")
-    for prop, val, test in zip(PROPERTY_NAMES, best_val, best_test):
+    for prop, val, test in zip(property_names, best_val, best_test):
         print(f"  {prop:15s} | Best validation MAE: {val:.6f} | Test MAE at best val: {test:.6f}")
 
     return {
@@ -546,7 +625,7 @@ def train_baseline(
         seed_config = replace(
             config,
             seed=seed,
-            split_seed=seed,
+            split_seed=seed if config.vary_split_seed else config.split_seed,
             output_dir=base_output_dir / f"seed_{seed}",
             seeds=None,
         )
@@ -618,6 +697,13 @@ def parse_benchmark_args(
         default=default_seeds,
         help="Run repeated train/split seeds into output-dir/seed_<seed> subdirectories.",
     )
+    parser.add_argument(
+        "--fixed-split",
+        action="store_false",
+        dest="vary_split_seed",
+        help="Keep --split-seed fixed across repeated --seeds (vary training seeds only).",
+    )
+    parser.set_defaults(vary_split_seed=True)
     parser.add_argument("--train-size", type=int, default=110_000)
     parser.add_argument("--valid-size", type=int, default=10_000)
     parser.add_argument("--device", default="cuda", choices=["auto", "cpu", "cuda"])
@@ -632,6 +718,18 @@ def parse_benchmark_args(
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Automatically resume from output-dir/checkpoints/last_checkpoint.pt when it exists.",
+    )
+    target_group = parser.add_mutually_exclusive_group()
+    target_group.add_argument(
+        "--target-preset",
+        choices=sorted(TARGET_PRESETS),
+        default="all",
+        help="QM9 target group to train jointly (default: all 19 targets).",
+    )
+    target_group.add_argument(
+        "--target",
+        choices=TARGET_NAMES,
+        help="Train one QM9 target, identified by its canonical name.",
     )
     args = parser.parse_args()
     if args.split_seed is None:
