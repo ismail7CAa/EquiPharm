@@ -6,6 +6,7 @@ DUD_E_URL="${DUD_E_URL:-http://dude.docking.org/db/subsets/all/all.tar.gz}"
 LIT_PCBA_URL="${LIT_PCBA_URL:-}"
 DEKOIS2_URL="${DEKOIS2_URL:-}"
 BAYESBIND_URL="${BAYESBIND_URL:-}"
+PHARMACOMATCH_URL="${PHARMACOMATCH_URL:-https://ndownloader.figshare.com/files/52234646}"
 DOWNLOAD_DIR="${DOWNLOAD_DIR:-.downloads}"
 DUD_E_ARCHIVE="$DOWNLOAD_DIR/dude_all.tar.gz"
 DUD_E_EXTRACT_DIR="$DOWNLOAD_DIR/dude_all"
@@ -123,6 +124,30 @@ download_qm9() {
   python scripts/download_qm9.py --output-dir data/QM9
 }
 
+download_pharmacomatch() {
+  local archive="$DOWNLOAD_DIR/pharmacomatch_data.zip"
+  echo "Downloading official PharmacoMatch data from $PHARMACOMATCH_URL"
+  download_file "$PHARMACOMATCH_URL" "$archive"
+  if command -v md5sum >/dev/null 2>&1; then
+    echo "387168f6dfb6ae821b08f7a3b92ab056  $archive" | md5sum -c -
+  elif command -v md5 >/dev/null 2>&1; then
+    [[ "$(md5 -q "$archive")" == "387168f6dfb6ae821b08f7a3b92ab056" ]] || {
+      echo "Error: PharmacoMatch archive checksum mismatch." >&2
+      exit 1
+    }
+  else
+    echo "Error: md5sum or md5 is required to verify the dataset archive." >&2
+    exit 1
+  fi
+  extract_archive "$archive" ".downloads/pharmacomatch_extract"
+  if [[ ! -d ".downloads/pharmacomatch_extract/data" ]]; then
+    echo "Error: PharmacoMatch archive does not contain a top-level data directory." >&2
+    exit 1
+  fi
+  cp -R ".downloads/pharmacomatch_extract/data/." data/
+  echo "PharmacoMatch data ready under data/"
+}
+
 case "$MODE" in
   all)
     download_dude
@@ -134,6 +159,9 @@ case "$MODE" in
   qm9)
     download_qm9
     ;;
+  pharmacomatch)
+    download_pharmacomatch
+    ;;
   lit-pcba)
     download_lit_pcba
     ;;
@@ -144,7 +172,7 @@ case "$MODE" in
     download_bayesbind
     ;;
   *)
-    echo "Usage: bash scripts/download_datasets.sh [all|dude|qm9|lit-pcba|dekois2|bayesbind]" >&2
+    echo "Usage: bash scripts/download_datasets.sh [all|dude|qm9|pharmacomatch|lit-pcba|dekois2|bayesbind]" >&2
     exit 1
     ;;
 esac
