@@ -27,7 +27,8 @@ def order_embedding_loss(embeddings: dict[str, torch.Tensor], margin: float = 10
             penalty(targets, torch.roll(targets, shift, dims=0)),
         ]
     )
-    loss = positive.mean() + (margin - negatives).clamp_min(0).mean()
+    # PharmacoMatch optimizes the summed order-embedding penalties, not their means.
+    loss = positive.sum() + (margin - negatives).clamp_min(0).sum()
 
     scores = torch.cat([-reference_positive, -negatives])
     labels = torch.cat(
