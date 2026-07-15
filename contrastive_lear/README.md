@@ -23,10 +23,28 @@ data/training_data/processed/chembl_data.pt
 
 ```bash
 python -m contrastive_lear.run_comparison \
-  --seeds 1 2 3 \
-  --epochs 500 \
   --device cuda
 ```
+
+The defaults reproduce PharmacoMatch's published training setup for both
+Equiformer encoders:
+
+- seed 42, 500 epochs, and float32 training;
+- batch size 256 for training and evaluation;
+- Adam with learning rate `1e-3` and no scheduler or weight decay;
+- summed order-embedding loss with margin 100 and gradient clipping at 1;
+- spherical displacement radius 1.5 Å;
+- a three-layer, 1024-wide projector with dropout 0.2 and 512 outputs;
+- the ordered 98% inner/2% outer split, followed by a 90%/10% train/inner-validation split;
+- curriculum learning starting with pharmacophores of at most four features and
+  increasing the limit after 10 epochs without a validation-loss improvement of 0.1.
+
+The values come from the authors'
+[`config.yaml`](https://github.com/molinfo-vienna/PharmacoMatch/blob/7a5c7fa0869a24e6a4a044bbd5affc6821f9352d/scripts/config.yaml)
+and
+[`training.py`](https://github.com/molinfo-vienna/PharmacoMatch/blob/7a5c7fa0869a24e6a4a044bbd5affc6821f9352d/scripts/training.py).
+The Equiformer encoder dimensions remain architecture-specific; PharmacoMatch used
+an NNConv encoder rather than either Equiformer model compared here.
 
 Use `--limit 10000 --epochs 1` for a smoke test. Each epoch is checkpointed by
 default; increase `--save-every` when disk usage matters.
@@ -36,14 +54,15 @@ default; increase `--save-every` when disk usage matters.
 ```bash
 python -m contrastive_lear.train \
   --method equiformer_adj \
-  --seeds 1 2 3 \
   --device cuda
 
 python -m contrastive_lear.train \
   --method equiformer_official \
-  --seeds 1 2 3 \
   --device cuda
 ```
+
+Pass `--seeds 1 2 3` when you want a repeated-seed comparison beyond the
+authors' seed-42 run. Use `--no-curriculum` only for an ablation.
 
 ## Outputs
 
