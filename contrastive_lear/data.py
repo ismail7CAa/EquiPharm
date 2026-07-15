@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import numpy as np
 import torch
 from torch.utils.data import Subset
 from torch_geometric.data import InMemoryDataset
@@ -32,15 +31,26 @@ class PharmacoMatchTrainingDataset(InMemoryDataset):
         )
 
 
-def split_dataset(dataset, seed: int, limit: int | None = None):
+def split_dataset(
+    dataset,
+    limit: int | None = None,
+    graph_size_upper_bound: int | None = None,
+):
+    """Reproduce PharmacoMatch's ordered outer/inner split and curriculum filter."""
     size = len(dataset) if limit is None or limit < 0 else min(limit, len(dataset))
-    indices = np.random.default_rng(seed).permutation(len(dataset))[:size]
-    outer_cut = int(size * 0.98)
-    inner_indices = indices[:outer_cut]
-    test_indices = indices[outer_cut:]
+    outer_cut = int(len(dataset) * 0.98)
+    inner_indices = list(range(outer_cut))
+    test_indices = list(range(outer_cut, len(dataset)))
+    if graph_size_upper_bound is not None:
+        inner_indices = [
+            index
+            for index in inner_indices
+            if dataset[index].num_nodes <= graph_size_upper_bound
+        ]
+    inner_indices = inner_indices[:size]
     train_cut = int(len(inner_indices) * 0.9)
     return (
-        Subset(dataset, inner_indices[:train_cut].tolist()),
-        Subset(dataset, inner_indices[train_cut:].tolist()),
-        Subset(dataset, test_indices.tolist()),
+        Subset(dataset, inner_indices[:train_cut]),
+        Subset(dataset, inner_indices[train_cut:]),
+        Subset(dataset, test_indices),
     )
