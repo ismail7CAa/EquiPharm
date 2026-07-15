@@ -6,6 +6,11 @@ import torch.nn.functional as F
 
 
 class PositiveLinear(nn.Linear):
+    def reset_parameters(self):
+        nn.init.xavier_uniform_(self.weight)
+        if self.bias is not None:
+            nn.init.zeros_(self.bias)
+
     def forward(self, inputs):
         return F.linear(inputs, self.weight.abs(), None)
 
@@ -15,6 +20,10 @@ class PositiveProjector(nn.Module):
         super().__init__()
         self.layers = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(hidden_dim, hidden_dim),
             nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
             nn.Dropout(0.2),
