@@ -17,6 +17,46 @@ from pathlib import Path
 
 
 OFFICIAL_REPOSITORY = "https://github.com/atomicarchitects/equiformer"
+CHECKPOINT_ENTRYPOINT = "main_qm9_with_checkpoints.py"
+
+_CHECKPOINT_ANCHOR = (
+    "        _log.info(info_str)\n"
+    "        \n"
+    "        # evaluation with EMA\n"
+)
+
+_CHECKPOINT_BLOCK = """        _log.info(info_str)
+
+        # Checkpointing added by EquiPharm's official Equiformer launcher.
+        checkpoint_dir = os.path.join(args.output_dir, 'checkpoints')
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        model_to_save = model.module if args.distributed else model
+        checkpoint = {
+            'epoch': epoch,
+            'model_state_dict': model_to_save.state_dict(),
+            'model_ema_state_dict': (
+                model_ema.module.state_dict() if model_ema is not None else None
+            ),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'scheduler_state_dict': lr_scheduler.state_dict(),
+            'best_epoch': best_epoch,
+            'best_train_mae': best_train_err,
+            'best_val_mae': best_val_err,
+            'best_test_mae': best_test_err,
+            'target_mean': task_mean,
+            'target_std': task_std,
+            'config': vars(args),
+        }
+        utils.save_on_master(
+            checkpoint, os.path.join(checkpoint_dir, 'last_checkpoint.pt')
+        )
+        if best_epoch == epoch:
+            utils.save_on_master(
+                checkpoint, os.path.join(checkpoint_dir, 'best_model.pt')
+            )
+
+        # evaluation with EMA
+"""
 
 QM9_TARGETS = {
     "dipole_moment": 0,
@@ -116,6 +156,22 @@ def resolve_targets(args: argparse.Namespace) -> list[str]:
     return TARGET_PRESETS[args.target_preset]
 
 
+def prepare_checkpoint_entrypoint(repo: Path) -> Path:
+    """Generate an upstream-compatible trainer with checkpoint saves added."""
+    source_path = repo / "main_qm9.py"
+    generated_path = repo / CHECKPOINT_ENTRYPOINT
+    source = source_path.read_text(encoding="utf-8")
+    if _CHECKPOINT_ANCHOR not in source:
+        raise RuntimeError(
+            "The official main_qm9.py no longer matches the pinned source expected "
+            "by the checkpoint integration. Check out the documented official commit."
+        )
+    generated = source.replace(_CHECKPOINT_ANCHOR, _CHECKPOINT_BLOCK, 1)
+    if not generated_path.exists() or generated_path.read_text(encoding="utf-8") != generated:
+        generated_path.write_text(generated, encoding="utf-8")
+    return generated_path
+
+
 def build_command(
     *,
     repo: Path,
@@ -123,6 +179,7 @@ def build_command(
     output_dir: Path,
     target_name: str,
     seed: int,
+    entrypoint: Path | None = None,
 ) -> list[str]:
     target_index = QM9_TARGETS[target_name]
     config = author_config(target_index)
@@ -131,7 +188,7 @@ def build_command(
         prefix += ["-m", "torch.distributed.launch", "--nproc_per_node=2", "--use_env"]
 
     command = prefix + [
-        str(repo / "main_qm9.py"),
+        str(entrypoint or repo / "main_qm9.py"),
         "--output-dir", str(output_dir / target_name / f"seed_{seed}"),
         "--model-name", config.model_name,
         "--input-irreps", "5x0e",
@@ -195,6 +252,10 @@ def main() -> None:
             f"to that path or pass --official-repo."
         )
 
+    entrypoint = repo / "main_qm9.py"
+    if not args.dry_run:
+        entrypoint = prepare_checkpoint_entrypoint(repo)
+
     for target_name in resolve_targets(args):
         config = author_config(QM9_TARGETS[target_name])
         print(f"\n### {target_name}: {config.alpha_description}", flush=True)
@@ -205,6 +266,7 @@ def main() -> None:
                 output_dir=output_dir,
                 target_name=target_name,
                 seed=seed,
+                entrypoint=entrypoint,
             )
             print(shlex.join(command), flush=True)
             if not args.dry_run:
