@@ -89,6 +89,17 @@ TARGET_PRESETS = {
         "rotational_constant_b",
         "rotational_constant_c",
     ],
+    "electronic_geometry": [
+        "dipole_moment",
+        "polarizability",
+        "homo",
+        "lumo",
+        "homo_lumo_gap",
+        "electronic_spatial_extent",
+        "rotational_constant_a",
+        "rotational_constant_b",
+        "rotational_constant_c",
+    ],
 }
 
 
@@ -659,6 +670,7 @@ def parse_benchmark_args(
     default_seed: int = 42,
     default_split_seed: int | None = None,
     default_seeds: list[int] | None = None,
+    default_vary_split_seed: bool = True,
 ) -> BenchmarkConfig:
     parser = argparse.ArgumentParser(description=f"Train a {model_name} baseline on QM9.")
     parser.add_argument("--data-dir", type=Path, default=Path("data/QM9"))
@@ -703,7 +715,7 @@ def parse_benchmark_args(
         dest="vary_split_seed",
         help="Keep --split-seed fixed across repeated --seeds (vary training seeds only).",
     )
-    parser.set_defaults(vary_split_seed=True)
+    parser.set_defaults(vary_split_seed=default_vary_split_seed)
     parser.add_argument("--train-size", type=int, default=110_000)
     parser.add_argument("--valid-size", type=int, default=10_000)
     parser.add_argument("--device", default="cuda", choices=["auto", "cpu", "cuda"])
