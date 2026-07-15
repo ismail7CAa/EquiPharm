@@ -28,18 +28,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--method", choices=METHODS, required=True)
     parser.add_argument("--data-dir", type=Path, default=Path("data/training_data"))
     parser.add_argument("--output-dir", type=Path, default=Path("runs/contrastive_lear"))
-    parser.add_argument("--seeds", nargs="+", type=int, default=[1, 2, 3])
-    parser.add_argument("--split-seed", type=int, default=42)
+    parser.add_argument("--seeds", nargs="+", type=int, default=[42])
     parser.add_argument("--epochs", type=int, default=500)
-    parser.add_argument("--batch-size", type=int, default=64)
-    parser.add_argument("--eval-batch-size", type=int, default=128)
+    parser.add_argument("--batch-size", type=int, default=256)
+    parser.add_argument("--eval-batch-size", type=int, default=256)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument("--margin", type=float, default=100.0)
     parser.add_argument("--radius", type=float, default=1.5)
     parser.add_argument("--embedding-dim", type=int, default=512)
     parser.add_argument("--limit", type=int, default=-1)
     parser.add_argument("--save-every", type=int, default=1)
-    parser.add_argument("--num-workers", type=int, default=4)
+    parser.add_argument("--num-workers", type=int, default=8)
+    parser.add_argument("--curriculum-start", type=int, default=4)
+    parser.add_argument("--curriculum-patience", type=int, default=10)
+    parser.add_argument("--curriculum-min-improvement", type=float, default=0.1)
+    parser.add_argument("--no-curriculum", action="store_true")
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="cuda")
     return parser.parse_args()
 
@@ -109,15 +112,33 @@ def train_seed(args, dataset, seed, device):
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
-    train_set, val_set, test_set = split_dataset(dataset, args.split_seed, args.limit)
-    train_loader = DataLoader(
-        train_set, batch_size=args.batch_size, shuffle=True, drop_last=True,
-        num_workers=args.num_workers, persistent_workers=args.num_workers > 0,
-    )
-    val_loader = DataLoader(val_set, batch_size=args.eval_batch_size, shuffle=False,
-                            num_workers=args.num_workers)
-    test_loader = DataLoader(test_set, batch_size=args.eval_batch_size, shuffle=False,
-                             num_workers=args.num_workers)
+    torch.set_float32_matmul_precision("medium")
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    graph_size_upper_bound = None if args.no_curriculum else args.curriculum_start
+
+    def make_loaders():
+        train_set, val_set, test_set = split_dataset(
+            dataset,
+            args.limit,
+            graph_size_upper_bound=graph_size_upper_bound,
+        )
+        return (
+            DataLoader(
+                train_set, batch_size=args.batch_size, shuffle=True, drop_last=True,
+                num_workers=args.num_workers, persistent_workers=args.num_workers > 0,
+            ),
+            DataLoader(
+                val_set, batch_size=args.eval_batch_size, shuffle=False, drop_last=True,
+                num_workers=args.num_workers,
+            ),
+            DataLoader(
+                test_set, batch_size=args.eval_batch_size, shuffle=False, drop_last=True,
+                num_workers=args.num_workers,
+            ),
+        )
+
+    train_loader, val_loader, test_loader = make_loaders()
 
     run_dir = args.output_dir / args.method / f"seed_{seed}"
     checkpoint_dir = run_dir / "checkpoints"
@@ -130,6 +151,8 @@ def train_seed(args, dataset, seed, device):
     history_path = run_dir / "metrics.csv"
     best_val = -1.0
     best_test = float("nan")
+    curriculum_reference_loss = float("inf")
+    curriculum_counter = 0
     start = time.time()
     with history_path.open("w", newline="") as history_file, SummaryWriter(run_dir / "logs") as writer:
         fieldnames = [
@@ -165,6 +188,18 @@ def train_seed(args, dataset, seed, device):
                 best_val = val_metrics["auroc"]
                 best_test = test_metrics["auroc"]
                 save_checkpoint(checkpoint_dir / "best.pt", epoch, model, optimizer, best_val, args)
+            if graph_size_upper_bound is not None and epoch > 1:
+                if val_metrics["loss"] + args.curriculum_min_improvement < curriculum_reference_loss:
+                    curriculum_reference_loss = val_metrics["loss"]
+                    curriculum_counter = 0
+                elif curriculum_counter < args.curriculum_patience:
+                    curriculum_counter += 1
+                else:
+                    graph_size_upper_bound += 1
+                    curriculum_reference_loss = float("inf")
+                    curriculum_counter = 0
+                    train_loader, val_loader, test_loader = make_loaders()
+                    print(f"Curriculum graph-size bound increased to {graph_size_upper_bound}")
             print(
                 f"{args.method} seed={seed} epoch={epoch}: "
                 f"train_loss={train_metrics['loss']:.4f} val_auc={val_metrics['auroc']:.4f} "
@@ -173,7 +208,7 @@ def train_seed(args, dataset, seed, device):
     return {
         "method": args.method,
         "seed": seed,
-        "split_seed": args.split_seed,
+        "split": "ordered_98pct_outer_then_90pct_inner",
         "best_val_auroc": best_val,
         "test_auroc_at_best_val": best_test,
         "training_seconds": time.time() - start,
