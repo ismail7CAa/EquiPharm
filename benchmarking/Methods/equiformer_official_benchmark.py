@@ -143,6 +143,7 @@ def main() -> None:
         default_seed=0,
         default_split_seed=1,
         default_seeds=[1, 2, 3],
+        default_vary_split_seed=False,
     )
     train_baseline(config, OfficialEquiformerQM9)
 
