@@ -14,14 +14,13 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Compare both Equiformers on PharmacoMatch.")
     parser.add_argument("--data-dir", type=Path, default=Path("data/training_data"))
     parser.add_argument("--output-dir", type=Path, default=Path("runs/contrastive_lear"))
-    parser.add_argument("--seeds", nargs="+", type=int, default=[1, 2, 3])
-    parser.add_argument("--split-seed", type=int, default=42)
+    parser.add_argument("--seeds", nargs="+", type=int, default=[42])
     parser.add_argument("--epochs", type=int, default=500)
-    parser.add_argument("--batch-size", type=int, default=64)
-    parser.add_argument("--eval-batch-size", type=int, default=128)
+    parser.add_argument("--batch-size", type=int, default=256)
+    parser.add_argument("--eval-batch-size", type=int, default=256)
     parser.add_argument("--limit", type=int, default=-1)
     parser.add_argument("--save-every", type=int, default=1)
-    parser.add_argument("--num-workers", type=int, default=4)
+    parser.add_argument("--num-workers", type=int, default=8)
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="cuda")
     return parser.parse_args()
 
@@ -32,7 +31,6 @@ def main():
         "--data-dir", str(args.data_dir),
         "--output-dir", str(args.output_dir),
         "--seeds", *map(str, args.seeds),
-        "--split-seed", str(args.split_seed),
         "--epochs", str(args.epochs),
         "--batch-size", str(args.batch_size),
         "--eval-batch-size", str(args.eval_batch_size),
