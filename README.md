@@ -118,6 +118,7 @@ pharmacophore/
 
 figures/                           # Project diagrams, README images, and result visualizations
 models_checkpt/                    # Helper script for downloading the trained model checkpoint
+pharm_training/                    # ANI-2x/SPICE Equiformer encoder pretraining
 scripts/                           # Dataset and checkpoint preparation helpers
 ```
 
@@ -128,6 +129,10 @@ scripts/                           # Dataset and checkpoint preparation helpers
 - `LIT-PCBA`: optional virtual-screening benchmark with active/inactive target sets.
 - `DEKOIS 2.0`: optional active/decoy benchmark for retrospective virtual screening.
 - `BayesBind`: optional structure-based virtual-screening benchmark.
+- `ANI-2x`: neural-potential data containing energies and forces for molecules
+  with H, C, N, O, S, F, and Cl.
+- `SPICE`: quantum-chemistry data for drug-like molecules, peptides, and
+  intermolecular interactions.
 
 Datasets and trained checkpoints are expected to be stored locally and are not committed to the repository.
 
@@ -164,6 +169,32 @@ To download only one dataset:
 bash scripts/download_datasets.sh dude
 bash scripts/download_datasets.sh qm9
 ```
+
+Download ANI-2x and SPICE individually with:
+
+```bash
+# ANI-2x at the wB97X/6-31G(d) level used to train the original ANI-2x model
+bash scripts/download_datasets.sh ani2x
+
+# Official SPICE 2.0.1 release
+bash scripts/download_datasets.sh spice
+```
+
+They are intentionally excluded from the default `all` command because the
+downloads are several gigabytes. Downloads resume when possible and are checked
+against the checksums published by the dataset authors. The resulting layout is:
+
+```text
+data/ANI-2x/                 # extracted ANI-2x HDF5 shards
+data/SPICE/SPICE-2.0.1.hdf5
+```
+
+The script pins the official
+[ANI-2x Zenodo v1 release](https://doi.org/10.5281/zenodo.10108942) and
+[SPICE 2.0.1 release](https://doi.org/10.5281/zenodo.10975225).
+Override `ANI2X_URL` or `SPICE_URL` only when using a mirror of the same files.
+See [`pharm_training/README.md`](pharm_training/README.md) for separate data
+preparation and encoder-pretraining commands.
 
 Additional screening datasets can be downloaded from their official distributions and normalized into the same target layout:
 
