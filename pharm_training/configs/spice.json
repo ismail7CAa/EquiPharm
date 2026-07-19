@@ -1,0 +1,20 @@
+{
+  "dataset": "spice",
+  "manifest": "data/SPICE/prepared/manifest.json",
+  "output_dir": "runs/pharm_training/spice",
+  "epochs": 30,
+  "batch_size": 8,
+  "learning_rate": 0.0001,
+  "weight_decay": 0.00001,
+  "warmup_epochs": 2,
+  "min_learning_rate": 0.000001,
+  "energy_weight": 1.0,
+  "force_weight": 100.0,
+  "cutoff": 6.0,
+  "gradient_clip": 10.0,
+  "early_stopping_patience": 8,
+  "seed": 42,
+  "num_workers": 4,
+  "train_limit": -1,
+  "eval_limit": -1
+}
