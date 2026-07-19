@@ -1,13 +1,18 @@
 #!/bin/bash
 set -euo pipefail
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
 MODE="${1:-all}"
 DUD_E_URL="${DUD_E_URL:-http://dude.docking.org/db/subsets/all/all.tar.gz}"
 LIT_PCBA_URL="${LIT_PCBA_URL:-}"
 DEKOIS2_URL="${DEKOIS2_URL:-}"
 BAYESBIND_URL="${BAYESBIND_URL:-}"
 PHARMACOMATCH_URL="${PHARMACOMATCH_URL:-https://ndownloader.figshare.com/files/52234646}"
-DOWNLOAD_DIR="${DOWNLOAD_DIR:-.downloads}"
+ANI2X_URL="${ANI2X_URL:-https://zenodo.org/records/10108942/files/ANI-2x-wB97X-631Gd.tar.gz?download=1}"
+SPICE_URL="${SPICE_URL:-https://zenodo.org/records/10975225/files/SPICE-2.0.1.hdf5?download=1}"
+DATA_DIR="${DATA_DIR:-$ROOT_DIR/data}"
+DOWNLOAD_DIR="${DOWNLOAD_DIR:-$ROOT_DIR/.downloads}"
 DUD_E_ARCHIVE="$DOWNLOAD_DIR/dude_all.tar.gz"
 DUD_E_EXTRACT_DIR="$DOWNLOAD_DIR/dude_all"
 
@@ -21,11 +26,27 @@ download_file() {
 
   mkdir -p "$(dirname "$output")"
   if command -v curl >/dev/null 2>&1; then
-    curl -L "$url" -o "$output"
+    curl --fail --location --continue-at - "$url" --output "$output"
   elif command -v wget >/dev/null 2>&1; then
-    wget -O "$output" "$url"
+    wget --continue --output-document="$output" "$url"
   else
     echo "Error: install curl or wget to download datasets." >&2
+    exit 1
+  fi
+}
+
+verify_md5() {
+  local expected="$1"
+  local file="$2"
+  if command -v md5sum >/dev/null 2>&1; then
+    echo "$expected  $file" | md5sum -c -
+  elif command -v md5 >/dev/null 2>&1; then
+    [[ "$(md5 -q "$file")" == "$expected" ]] || {
+      echo "Error: checksum mismatch for $file." >&2
+      exit 1
+    }
+  else
+    echo "Error: md5sum or md5 is required to verify $file." >&2
     exit 1
   fi
 }
@@ -148,6 +169,25 @@ download_pharmacomatch() {
   echo "PharmacoMatch data ready under data/"
 }
 
+download_ani2x() {
+  local archive="$DOWNLOAD_DIR/ANI-2x-wB97X-631Gd.tar.gz"
+  echo "Downloading ANI-2x (wB97X/6-31G(d)) from $ANI2X_URL"
+  download_file "$ANI2X_URL" "$archive"
+  verify_md5 "cb1d9effb3d07fc1cc6ced7cd0b1e1f2" "$archive"
+  extract_archive "$archive" "$DATA_DIR/ANI-2x"
+  echo "ANI-2x ready under $DATA_DIR/ANI-2x/"
+}
+
+download_spice() {
+  local dataset_dir="$DATA_DIR/SPICE"
+  local dataset_file="$dataset_dir/SPICE-2.0.1.hdf5"
+  mkdir -p "$dataset_dir"
+  echo "Downloading SPICE 2.0.1 from $SPICE_URL"
+  download_file "$SPICE_URL" "$dataset_file"
+  verify_md5 "bfba2224b6540e1390a579569b475510" "$dataset_file"
+  echo "SPICE ready at $dataset_file"
+}
+
 case "$MODE" in
   all)
     download_dude
@@ -162,6 +202,12 @@ case "$MODE" in
   pharmacomatch)
     download_pharmacomatch
     ;;
+  ani2x)
+    download_ani2x
+    ;;
+  spice)
+    download_spice
+    ;;
   lit-pcba)
     download_lit_pcba
     ;;
@@ -172,7 +218,7 @@ case "$MODE" in
     download_bayesbind
     ;;
   *)
-    echo "Usage: bash scripts/download_datasets.sh [all|dude|qm9|pharmacomatch|lit-pcba|dekois2|bayesbind]" >&2
+    echo "Usage: bash scripts/download_datasets.sh [all|dude|qm9|pharmacomatch|ani2x|spice|lit-pcba|dekois2|bayesbind]" >&2
     exit 1
     ;;
 esac
