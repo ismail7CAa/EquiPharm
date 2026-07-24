@@ -47,7 +47,10 @@ def load_matching_model(
     model_class: str,
 ):
     model_type = import_model_class(model_module, model_class)
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    # Training checkpoints contain optimizer/NumPy metadata in addition to tensors.
+    # PyTorch 2.6 changed the default to weights_only=True, which rejects these
+    # trusted, locally produced checkpoints.
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     model = model_type().to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
