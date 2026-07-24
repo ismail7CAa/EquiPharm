@@ -15,6 +15,7 @@ try:
     from .artifacts import initialize_artifacts, save_failure_artifact, save_molecule_artifact, save_query_artifact
     from .matching import matching_score
     from .metrics import write_outputs
+    from .model_loading import model_kwargs_from_checkpoint
     from .molecule_io import (
         prepare_mol_for_pharmacophore,
         read_query_ligand,
@@ -28,6 +29,7 @@ except ImportError:
     from pharmacophore.core.artifacts import initialize_artifacts, save_failure_artifact, save_molecule_artifact, save_query_artifact
     from pharmacophore.core.matching import matching_score
     from pharmacophore.core.metrics import write_outputs
+    from pharmacophore.core.model_loading import model_kwargs_from_checkpoint
     from pharmacophore.core.molecule_io import (
         prepare_mol_for_pharmacophore,
         read_query_ligand,
@@ -51,7 +53,8 @@ def load_matching_model(
     # PyTorch 2.6 changed the default to weights_only=True, which rejects these
     # trusted, locally produced checkpoints.
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
-    model = model_type().to(device)
+    model_kwargs = model_kwargs_from_checkpoint(model_type, checkpoint)
+    model = model_type(**model_kwargs).to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
     if not hasattr(model, "encode_pharmacophore_features"):
