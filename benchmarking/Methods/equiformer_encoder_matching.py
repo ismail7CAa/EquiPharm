@@ -30,10 +30,18 @@ from rdkit.Chem import ChemicalFeatures
 # Build Equiformer model
 # Define Equiformer 
 class EquiformerQM9(nn.Module):
-    def __init__(self, n_token=11, n_out=19, hidden_dim=128):
+    def __init__(
+        self,
+        n_token=11,
+        n_out=19,
+        hidden_dim=128,
+        drop_path=0.0,
+        num_neighbors=2,
+    ):
         super().__init__()
 
         self.hidden_dim = hidden_dim
+        del drop_path  # Stochastic depth is inactive during screening inference.
 
         # 1) Atom feature embedding 
         self.embedding = nn.Linear(n_token, hidden_dim)
@@ -53,7 +61,7 @@ class EquiformerQM9(nn.Module):
 
             # --- key efficiency / "molecular graph" knobs ---
             attend_sparse_neighbors=True,  # requires adj_mat
-            num_neighbors=2,               # 0 = bonds only; >0 adds closest geometric neighbors
+            num_neighbors=num_neighbors,   # benchmark EquiformerAdj uses 4; legacy screening uses 2
             num_adj_degrees_embed=2,       # adds 2-hop connectivity embedding
             max_sparse_neighbors=16,       # cap total sparse neighbors
 
