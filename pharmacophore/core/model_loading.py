@@ -14,11 +14,19 @@ def model_kwargs_from_checkpoint(model_type, checkpoint: dict) -> dict:
 
     embedding_weight = state.get("embedding.weight")
     linear_weight = state.get("linear.weight")
+    core_norm = state.get("model.norm.transforms.1")
     if embedding_weight is not None:
         if "n_token" in parameters:
             kwargs["n_token"] = int(embedding_weight.shape[1])
-        if "hidden_dim" in parameters:
-            kwargs["hidden_dim"] = int(embedding_weight.shape[0])
+        if "embedding_dim" in parameters:
+            kwargs["embedding_dim"] = int(embedding_weight.shape[0])
+
+    if core_norm is not None and "hidden_dim" in parameters:
+        kwargs["hidden_dim"] = int(core_norm.shape[0])
+    elif linear_weight is not None and "hidden_dim" in parameters:
+        kwargs["hidden_dim"] = int(linear_weight.shape[1])
+    elif embedding_weight is not None and "hidden_dim" in parameters:
+        kwargs["hidden_dim"] = int(embedding_weight.shape[0])
     elif "hidden_dim" in parameters and config.get("hidden_dim") is not None:
         kwargs["hidden_dim"] = int(config["hidden_dim"])
 

@@ -35,23 +35,25 @@ class EquiformerQM9(nn.Module):
         n_token=11,
         n_out=19,
         hidden_dim=128,
+        embedding_dim=None,
         drop_path=0.0,
         num_neighbors=2,
     ):
         super().__init__()
 
         self.hidden_dim = hidden_dim
+        embedding_dim = hidden_dim if embedding_dim is None else embedding_dim
         del drop_path  # Stochastic depth is inactive during screening inference.
 
         # 1) Atom feature embedding 
-        self.embedding = nn.Linear(n_token, hidden_dim)
+        self.embedding = nn.Linear(n_token, embedding_dim)
 
         # 2) Equiformer core
         # input_degrees=1: inputs are scalar features
         # num_degrees=2: internal features include degree 0 and 1 (scalars + vectors)
         self.model = Equiformer(
             dim=hidden_dim,
-            dim_in=hidden_dim,
+            dim_in=embedding_dim,
             input_degrees=1,
             num_degrees=2,
 
