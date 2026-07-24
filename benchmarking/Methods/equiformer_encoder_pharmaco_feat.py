@@ -30,43 +30,30 @@ from rdkit.Chem import ChemicalFeatures
 # Build Equiformer model
 # Define Equiformer 
 class EquiformerQM9(nn.Module):
-    def __init__(
-        self,
-        n_token=11,
-        n_out=19,
-        hidden_dim=128,
-        embedding_dim=None,
-        degree_dims=None,
-        drop_path=0.0,
-        num_neighbors=2,
-    ):
+    def __init__(self, n_token=11, n_out=19, hidden_dim=128):
         super().__init__()
 
-        degree_dims = (hidden_dim, hidden_dim) if degree_dims is None else tuple(degree_dims)
-        hidden_dim = degree_dims[0]
         self.hidden_dim = hidden_dim
-        embedding_dim = hidden_dim if embedding_dim is None else embedding_dim
-        del drop_path  # Stochastic depth is inactive during screening inference.
 
         # 1) Atom feature embedding 
-        self.embedding = nn.Linear(n_token, embedding_dim)
+        self.embedding = nn.Linear(n_token, hidden_dim)
 
         # 2) Equiformer core
         # input_degrees=1: inputs are scalar features
         # num_degrees=2: internal features include degree 0 and 1 (scalars + vectors)
         self.model = Equiformer(
-            dim=degree_dims,
-            dim_in=embedding_dim,
+            dim=hidden_dim,
+            dim_in=hidden_dim,
             input_degrees=1,
-            num_degrees=len(degree_dims),
+            num_degrees=2,
 
             heads=4,
-            dim_head=hidden_dim // 4,
+            dim_head=hidden_dim // 4,   # 32 when hidden_dim=128
             depth=6, 
 
             # --- key efficiency / "molecular graph" knobs ---
             attend_sparse_neighbors=True,  # requires adj_mat
-            num_neighbors=num_neighbors,   # benchmark EquiformerAdj uses 4; legacy screening uses 2
+            num_neighbors=2,               # 0 = bonds only; >0 adds closest geometric neighbors
             num_adj_degrees_embed=2,       # adds 2-hop connectivity embedding
             max_sparse_neighbors=16,       # cap total sparse neighbors
 

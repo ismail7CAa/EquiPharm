@@ -14,7 +14,6 @@ from tqdm import tqdm
 try:
     from .artifacts import initialize_artifacts, save_failure_artifact, save_molecule_artifact, save_query_artifact
     from .metrics import write_outputs
-    from .model_loading import model_kwargs_from_checkpoint
     from .molecule_io import (
         mol2_to_rdkit_mol,
         prepare_mol_for_pharmacophore,
@@ -27,7 +26,6 @@ try:
 except ImportError:
     from pharmacophore.core.artifacts import initialize_artifacts, save_failure_artifact, save_molecule_artifact, save_query_artifact
     from pharmacophore.core.metrics import write_outputs
-    from pharmacophore.core.model_loading import model_kwargs_from_checkpoint
     from pharmacophore.core.molecule_io import (
         mol2_to_rdkit_mol,
         prepare_mol_for_pharmacophore,
@@ -52,12 +50,8 @@ def load_model(
     model_class: str,
 ):
     model_type = import_model_class(model_module, model_class)
-    # Training checkpoints contain optimizer/NumPy metadata in addition to tensors.
-    # Keep compatibility with the weights_only=True default introduced in PyTorch 2.6.
-    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
-    model_kwargs = model_kwargs_from_checkpoint(model_type, checkpoint)
-    print(f"Reconstructing {model_class} from checkpoint with {model_kwargs}")
-    model = model_type(**model_kwargs).to(device)
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    model = model_type().to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
     return model
