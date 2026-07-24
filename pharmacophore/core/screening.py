@@ -56,6 +56,7 @@ def load_model(
     # Keep compatibility with the weights_only=True default introduced in PyTorch 2.6.
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     model_kwargs = model_kwargs_from_checkpoint(model_type, checkpoint)
+    print(f"Reconstructing {model_class} from checkpoint with {model_kwargs}")
     model = model_type(**model_kwargs).to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()

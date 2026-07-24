@@ -54,6 +54,7 @@ def load_matching_model(
     # trusted, locally produced checkpoints.
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     model_kwargs = model_kwargs_from_checkpoint(model_type, checkpoint)
+    print(f"Reconstructing {model_class} from checkpoint with {model_kwargs}")
     model = model_type(**model_kwargs).to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
