@@ -24,6 +24,8 @@ def compute_metrics(scores, labels, *, pipeline_name: str, target_name: str) -> 
         "roc_auc": float(roc_auc_score(y_true, y_score)),
         "pr_auc": float(auc(recall, precision)),
         "ef1_percent": enrichment_factor(y_score, y_true, fraction=0.01),
+        "ef5_percent": enrichment_factor(y_score, y_true, fraction=0.05),
+        "ef10_percent": enrichment_factor(y_score, y_true, fraction=0.10),
         "bedroc_alpha20": bedroc(y_score, y_true, alpha=DEFAULT_BEDROC_ALPHA),
         "n_total": int(len(y_true)),
         "n_actives": int(y_true.sum()),
