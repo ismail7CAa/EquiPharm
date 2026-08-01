@@ -17,7 +17,10 @@ BOHR_TO_ANGSTROM = 0.529177210903
 
 
 class PotentialDataset(Dataset):
-    def __init__(self, manifest_path: Path, split: str, cutoff: float, limit: int = -1):
+    def __init__(
+        self, manifest_path: Path, split: str, cutoff: float, limit: int = -1,
+        sample_seed: int = 42,
+    ):
         self.manifest = json.loads(Path(manifest_path).read_text())
         self.records = [r for r in self.manifest["records"] if r["split"] == split]
         self.cutoff = cutoff
@@ -30,6 +33,14 @@ class PotentialDataset(Dataset):
             total += record["conformations"]
             self.cumulative.append(total)
         self.length = total if limit < 0 else min(total, limit)
+        self.indices = None
+        if 0 <= limit < total:
+            split_offset = {"train": 0, "val": 1, "test": 2}.get(split, 3)
+            self.indices = np.sort(
+                np.random.default_rng(sample_seed + split_offset).choice(
+                    total, size=self.length, replace=False
+                )
+            )
         self._handles = {}
 
     def __len__(self):
@@ -41,6 +52,8 @@ class PotentialDataset(Dataset):
         return self._handles[source]
 
     def __getitem__(self, index):
+        if self.indices is not None:
+            index = int(self.indices[index])
         record_index = bisect.bisect_right(self.cumulative, index)
         previous = self.cumulative[record_index - 1] if record_index else 0
         conformation_index = index - previous
