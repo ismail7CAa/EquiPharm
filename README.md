@@ -20,8 +20,21 @@ flowchart TB
     B5 --> B6
   end
 
-  subgraph P["Pipeline 2: Pharmacophore Virtual Screening"]
-    P1["DUD-E target data<br/>query molecula (crystal ligand)"]
+  subgraph S["Pipeline 2: SPICE EquiformerAdj Pretraining"]
+    S1["SPICE 2.0.1<br/>atoms, 3D conformations, energies, gradients"]
+    S2["Molecule-disjoint splits<br/>90% train, 5% validation, 5% test"]
+    S3["Energy-conserving EquiformerAdj<br/>energy and force learning"]
+    S4["Validation-based hyperparameter search"]
+    S5["Transferable geometric encoder"]
+
+    S1 --> S2
+    S2 --> S3
+    S3 --> S4
+    S4 --> S5
+  end
+
+  subgraph P["Pipeline 3: Pharmacophore Virtual Screening"]
+    P1["DUD-E target data<br/>query molecule (crystal ligand)"]
     P2["DUD-E target data<br/>candidate molecule (actives, decoys)"]
     P3["Molecule preparation<br/>MOL2/SDF loading, RDKit sanitization"]
     P4["Torsion optimization<br/>conformer angle updates (Black Box Optimizer)"]
@@ -42,19 +55,33 @@ flowchart TB
   end
 
   B6 --> P6
+  S5 --> P6
 ```
 
 ## Overview
 
-EquiPharm is an end-to-end research framework for molecular representation learning and pharmacophore-based virtual screening. The repository connects two complementary pipelines: a benchmarking pipeline for selecting strong molecular graph encoders, and a pharmacophore screening pipeline that applies the selected representation strategy to ligand ranking on DUD-E targets.
+EquiPharm is an end-to-end research framework for molecular representation
+learning and pharmacophore-based virtual screening. We organize the project
+around three connected stages: molecular-model benchmarking, quantum-informed
+EquiformerAdj pretraining, and pharmacophore screening.
 
 The first part of the framework evaluates multiple 2D and 3D graph neural network architectures on QM9. These experiments compare classical molecular graph baselines with geometry-aware and equivariant models in order to identify representations that can capture both molecular topology and spatial structure.
 
-The second part of the framework builds on that model-selection stage. It uses Equiformer-based molecular embeddings, torsion optimization, pharmacophore feature extraction, and active-versus-decoy evaluation to support structure-based virtual screening. In this way, the repository is organized as a connected research workflow: benchmark the representation model first, then use the strongest representation family inside a pharmacophore screening system.
+We also pretrain the adjacency-aware Equiformer separately on SPICE 2.0.1. We
+chose SPICE because it provides atomic identities, 3D conformations,
+quantum-mechanical formation energies, and energy gradients. This lets us train
+the encoder with both energy and force supervision before adapting its geometric
+representation to pharmacophore features.
+
+The screening stage uses Equiformer-based embeddings, torsion optimization,
+RDKit pharmacophore feature extraction, and active-versus-decoy evaluation. The
+three stages therefore have clear roles: QM9 compares model families, SPICE
+pretrains the geometric encoder, and the screening pipelines evaluate ligand
+recognition.
 
 ## Framework Design
 
-The project is organized around two connected pipelines.
+The project is organized around three connected pipelines.
 
 ### 1. Benchmarking Pipeline
 
@@ -71,7 +98,20 @@ The benchmarking pipeline evaluates molecular representation models on the QM9 d
 
 This stage provides a controlled comparison of model families and produces checkpoints, metrics, logs, and result files that can be used to guide downstream model selection.
 
-### 2. Pharmacophore Screening Pipeline
+### 2. SPICE EquiformerAdj Pretraining
+
+We train EquiformerAdj as an energy-conserving neural potential on SPICE. The
+model predicts a total molecular energy, and atomic forces are obtained as the
+negative gradient of that energy with respect to the coordinates. A resumable
+hyperparameter search compares learning rate, force-loss weight, weight decay,
+and graph-neighbor capacity using validation energy and force errors.
+
+The SPICE element embedding and energy head are used only during pretraining.
+The geometric Equiformer core is saved separately so that it can later be
+connected to descriptor inputs, RDKit pharmacophore features, and Hungarian
+feature matching.
+
+### 3. Pharmacophore Screening Pipeline
 
 The pharmacophore pipeline applies the selected 3D representation approach to virtual screening on DUD-E targets. It contains maintained screening workflows and external baseline adapters:
 
@@ -85,7 +125,14 @@ The pharmacophore pipeline applies the selected 3D representation approach to vi
 - `Equiformer_with_optimization`: a baseline Equiformer screening workflow with the same torsion optimization and active/decoy evaluation flow, but without explicit pharmacophore feature attachment.
 - `CDPKit`, `PharmacoMatch`, `SchrodingerPhase`, `OpenPharmaco`, `Pharmit`, and `DiscoveryStudio`: optional external baseline adapters.
 
-The Hungarian variants use `benchmarking.Methods.equiformer_encoder_matching` to expose feature-level pharmacophore embeddings before assignment scoring. Their cost matrix allows same-family pharmacophore matches, such as donor-to-donor or aromatic-to-aromatic, and sets incompatible pairs to `Inf`. After matching, the spatial variants use 3D pharmacophore distances, while the cosine variants use embedding cosine similarity and cosine-distance geometry.
+The existing QM9-era Hungarian variants use
+`benchmarking.Methods.equiformer_encoder_matching`. The separate SPICE-pretrained
+path uses `pharm_training.equiformer_encoder_pharmaco_feat` and can feed the same
+downstream Hungarian scoring utilities. The cost matrix allows same-family
+pharmacophore matches, such as donor-to-donor or aromatic-to-aromatic, and sets
+incompatible pairs to `Inf`. After matching, the spatial variants use 3D
+pharmacophore distances, while the cosine variants use embedding cosine
+similarity and cosine-distance geometry.
 
 These workflows use shared utilities for molecule loading, RDKit-to-PyG conversion, torsion optimization, scoring, metric calculation, and plot generation. This keeps the screening logic reproducible while allowing direct comparison between pharmacophore-aware, matching-based, and external screening methods.
 
@@ -119,6 +166,8 @@ pharmacophore/
 figures/                           # Project diagrams, README images, and result visualizations
 models_checkpt/                    # Helper script for downloading the trained model checkpoint
 pharm_training/                    # ANI-2x/SPICE Equiformer encoder pretraining
+  equiformer_encoder_pharmaco_feat.py # SPICE-pretrained pharmacophore adapter
+project_documentation/             # Detailed methodology and workflow notes
 scripts/                           # Dataset and checkpoint preparation helpers
 ```
 
@@ -131,8 +180,10 @@ scripts/                           # Dataset and checkpoint preparation helpers
 - `BayesBind`: optional structure-based virtual-screening benchmark.
 - `ANI-2x`: neural-potential data containing energies and forces for molecules
   with H, C, N, O, S, F, and Cl.
-- `SPICE`: quantum-chemistry data for drug-like molecules, peptides, and
-  intermolecular interactions.
+- `SPICE 2.0.1`: the main EquiformerAdj pretraining dataset. It contains
+  drug-like molecules, peptides, dimers, solvated amino-acid systems, atomic
+  identities, 3D conformations, quantum-mechanical formation energies, and DFT
+  gradients.
 
 Datasets and trained checkpoints are expected to be stored locally and are not committed to the repository.
 
@@ -195,6 +246,89 @@ The script pins the official
 Override `ANI2X_URL` or `SPICE_URL` only when using a mirror of the same files.
 See [`pharm_training/README.md`](pharm_training/README.md) for separate data
 preparation and encoder-pretraining commands.
+
+### SPICE EquiformerAdj Training Workflow
+
+We use SPICE for this stage because it combines the atomic and geometric
+information needed later for pharmacophore recognition with quantum-mechanical
+energy and force supervision. SPICE does not provide pharmacophore labels
+directly; RDKit extracts those features later. Pretraining first gives the
+Equiformer a physically informed representation of atoms, molecular geometry,
+and non-covalent interactions.
+
+Install and activate the project environment:
+
+```bash
+conda env create -f environment.yml
+conda activate equipharm
+```
+
+Download and prepare SPICE 2.0.1:
+
+```bash
+bash scripts/download_datasets.sh spice
+python -m pharm_training.prepare_spice
+```
+
+The preparation step creates deterministic molecule-disjoint training,
+validation, and test splits without copying the HDF5 dataset.
+
+Preview the hyperparameter trials before using the GPU:
+
+```bash
+python -m pharm_training.search \
+  --config pharm_training/configs/spice_search.json \
+  --device cuda \
+  --dry-run
+```
+
+Start or resume the validation-based search:
+
+```bash
+python -m pharm_training.search \
+  --config pharm_training/configs/spice_search.json \
+  --device cuda
+```
+
+The search tests 18 deterministic pilot configurations. It varies learning
+rate, force weight, weight decay, and maximum sparse neighbors. Completed trials
+are skipped, interrupted trials resume from their last checkpoint, and the test
+split remains untouched during model selection.
+
+After reviewing `runs/pharm_training/spice_search/search_summary.csv`, train the
+selected configuration on the full SPICE split:
+
+```bash
+python -m pharm_training.train \
+  --config runs/pharm_training/spice_search/best_full_config.json \
+  --device cuda
+```
+
+The full run has a maximum budget of 700 epochs. It reduces the learning rate
+when validation performance stops improving and ends early on a sustained
+plateau, severe divergence, or non-finite loss/gradients. Rerunning the same
+command resumes from `checkpoints/last.pt`.
+
+To train the documented baseline without running the search first:
+
+```bash
+python -m pharm_training.train \
+  --config pharm_training/configs/spice.json \
+  --device cuda
+```
+
+The best transferable geometric core is saved as `trained_encoder.pt`. It must
+still be connected to the pharmacophore descriptor input and fine-tuned or
+calibrated for screening; it is not a ready-to-use ligand-ranking model by
+itself.
+
+The separate adapter for this handoff is
+`pharm_training/equiformer_encoder_pharmaco_feat.py`. It loads the architecture
+and geometric weights from the SPICE checkpoint without importing or modifying
+the QM9 benchmark encoder.
+
+The complete scientific and technical description is available in
+[`project_documentation/02_SPICE_EquiformerAdj_Pretraining.txt`](project_documentation/02_SPICE_EquiformerAdj_Pretraining.txt).
 
 Additional screening datasets can be downloaded from their official distributions and normalized into the same target layout:
 
