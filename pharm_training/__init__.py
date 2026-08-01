@@ -1,1 +1,1 @@
-"""Equiformer encoder pretraining on molecular potential datasets."""
+"""SPICE EquiformerAdj pretraining and downstream pharmacophore adaptation."""
