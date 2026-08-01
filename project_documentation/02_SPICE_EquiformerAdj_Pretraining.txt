@@ -1,0 +1,415 @@
+02_SPICE_EquiformerAdj_Pretraining
+==================================
+
+Purpose
+-------
+
+We added a separate pretraining stage for the adjacency-aware Equiformer. The
+goal is to learn a chemically meaningful 3D encoder before using it for
+pharmacophore feature representation and matching.
+
+This training stage is independent of the QM9 benchmarking experiments. QM9 is
+still useful for comparing molecular representation models and property
+prediction, but the SPICE experiment has a different purpose: it trains the
+EquiformerAdj core directly from quantum-mechanical energies and forces.
+
+
+Why We Chose SPICE
+------------------
+
+We chose SPICE because it connects the quantum-chemical and pharmacophore parts
+of the project particularly well.
+
+SPICE contains drug-like molecules, peptides, dimers, and solvated amino-acid
+systems. For every conformation used here, it provides:
+
+- atomic numbers, which identify the chemical elements;
+- three-dimensional atomic coordinates;
+- quantum-mechanical formation energies;
+- DFT energy gradients, which we convert to atomic forces;
+- systems containing H, Li, B, C, N, O, F, Na, Mg, Si, P, S, Cl, K, Ca, Br,
+  and I in SPICE 2.0.1.
+
+This elemental coverage is important for pharmacophore screening. Common
+pharmacophore patterns depend on atoms and chemical environments such as
+nitrogen and oxygen in hydrogen-bond donors or acceptors, aromatic carbon
+systems, sulfur-containing groups, phosphorus-containing groups, and halogens.
+The 3D coordinates are equally important because a pharmacophore is defined not
+only by which features exist, but also by their spatial arrangement.
+
+SPICE does not contain ready-made pharmacophore labels. We later obtain those
+features with RDKit and connect them to the atoms that define each feature. The
+reason SPICE is valuable at the pretraining stage is that it teaches the encoder
+about atomic identity, molecular geometry, intramolecular interactions, and
+intermolecular interactions through quantum-mechanical supervision. We can then
+fine-tune the learned geometric representation for pharmacophore extraction and
+matching instead of starting from randomly initialized weights.
+
+The SPICE calculations were performed at the
+ωB97M-D3(BJ)/def2-TZVPPD level of theory. The dataset is therefore relevant to
+the non-covalent and geometry-dependent interactions that matter in molecular
+recognition.
+
+
+Separation from the QM9 Benchmark
+---------------------------------
+
+The two experiments answer different questions:
+
+- QM9 benchmarking asks which model family performs well for molecular property
+  prediction on small molecules.
+- SPICE pretraining asks whether EquiformerAdj can learn a transferable 3D
+  molecular representation from quantum-mechanical energies and forces.
+
+The SPICE implementation is kept under:
+
+pharm_training/
+
+It does not import the QM9 training scripts. This separation prevents benchmark
+settings, targets, and checkpoints from being mixed with the SPICE experiment.
+The pharmacophore adapter for this workflow is also kept in this folder:
+
+pharm_training/equiformer_encoder_pharmaco_feat.py
+
+It is separate from the older QM9 benchmarking encoders under
+benchmarking/Methods/.
+
+
+Dataset Download and Preparation
+--------------------------------
+
+Create and activate the project environment first:
+
+conda env create -f environment.yml
+conda activate equipharm
+
+Download the official SPICE 2.0.1 HDF5 file:
+
+bash scripts/download_datasets.sh spice
+
+The downloader stores it at:
+
+data/SPICE/SPICE-2.0.1.hdf5
+
+It supports resumed downloads and verifies the downloaded file with the
+published checksum.
+
+Prepare the training manifest:
+
+python -m pharm_training.prepare_spice
+
+Preparation does not copy the large HDF5 data. It validates the available
+groups and writes:
+
+data/SPICE/prepared/manifest.json
+
+The manifest contains molecule-disjoint 90%/5%/5% training, validation, and test
+splits. All conformations belonging to one molecular group remain in the same
+split. This avoids an easy form of data leakage in which nearly identical
+conformations of one molecule occur in both training and validation data.
+
+
+Units and Training Targets
+--------------------------
+
+SPICE coordinates are stored in Bohr and are converted to Angstrom:
+
+position_A = position_bohr * 0.529177210903
+
+Formation energies are converted from Hartree to electronvolt:
+
+energy_eV = energy_hartree * 27.211386245988
+
+SPICE stores the DFT total gradient. Force is the negative energy gradient:
+
+force = -dE/dr
+
+After the unit conversion, force is expressed in eV/Angstrom.
+
+The network predicts one total energy per molecular conformation. Atomic forces
+are not predicted by an independent output head. Instead, they are calculated
+by differentiating the predicted energy with respect to the atomic coordinates:
+
+predicted_force = -gradient(predicted_energy, position)
+
+This makes the learned force field energy-conserving by construction.
+
+
+Graph Construction
+------------------
+
+For each conformation, we calculate pairwise atomic distances and connect atoms
+within a 6 Angstrom cutoff. The default EquiformerAdj configuration uses:
+
+- hidden dimension: 128
+- depth: 6 Equiformer blocks
+- scalar input degree and scalar/vector internal representations
+- attention heads: 4
+- geometric neighbors added outside adjacency: 0
+- adjacency-degree embedding: 2
+- default sparse-neighbor cap: 32
+- self-attention: enabled
+
+Setting num_neighbors to zero is deliberate. The graph already represents the
+6 Angstrom neighborhood, so adding extra nearest atoms could silently change the
+meaning of the cutoff. The sparse-neighbor cap is included in the hyperparameter
+search because a cap that is too small can remove useful local interactions,
+while an unlimited neighborhood increases memory use.
+
+
+Loss Function
+-------------
+
+The energy error is divided by the number of atoms in each molecule before the
+loss is calculated. This makes energy errors from differently sized SPICE
+systems more comparable.
+
+The training objective is:
+
+training_loss = energy_weight * SmoothL1(energy_error_per_atom)
+              + force_weight  * SmoothL1(force_error)
+
+The default starting weights are:
+
+- energy weight: 1
+- force weight: 50
+
+Force weight is treated as a hyperparameter rather than a fixed scientific
+constant. SPICE provides three force components per atom, so force supervision
+contains much more information per conformation than the single energy value.
+Testing different force weights allows us to balance energy accuracy and local
+geometric accuracy empirically.
+
+
+Validation Score and Model Selection
+------------------------------------
+
+We do not rank hyperparameter trials by their weighted training loss. That would
+be unfair because changing force_weight also changes the numerical scale of the
+loss.
+
+Every trial is ranked with the same normalized validation score:
+
+validation_score = 0.5 * energy_MAE_eV_per_atom / 0.043
+                 + 0.5 * force_MAE_eV_per_Angstrom / 0.10
+
+Lower is better. The fixed reference scales make energy and force errors
+comparable without allowing one trial to benefit simply from a different loss
+weight.
+
+The individual validation energy MAE and force MAE are always saved alongside
+this combined score. We therefore keep the underlying scientific errors visible
+instead of reporting only one aggregate number.
+
+The test split is not evaluated during hyperparameter optimization. It is used
+only after the winning validation configuration has been selected and promoted
+to the full training run.
+
+
+Hyperparameter Optimization
+---------------------------
+
+The search controller is:
+
+pharm_training/search.py
+
+Its configuration is:
+
+pharm_training/configs/spice_search.json
+
+The pilot search tests combinations of:
+
+- learning rate: 1e-4, 2e-4, and 5e-4;
+- force weight: 10, 50, and 100;
+- weight decay: 1e-6 and 1e-5;
+- maximum sparse neighbors: 32, 48, and unlimited.
+
+The complete Cartesian grid contains 54 combinations. The current pilot budget
+selects 18 combinations deterministically with seed 42. This keeps the first
+search computationally manageable while still exploring different optimization
+and graph-density settings.
+
+Every pilot trial uses the same deterministic sample of 50,000 training and
+10,000 validation conformations. A pilot can train for at most 120 epochs, but
+validation early stopping can finish it sooner.
+
+Preview the selected trials without starting training:
+
+python -m pharm_training.search \
+  --config pharm_training/configs/spice_search.json \
+  --device cuda \
+  --dry-run
+
+Start or resume the search:
+
+python -m pharm_training.search \
+  --config pharm_training/configs/spice_search.json \
+  --device cuda
+
+The search writes:
+
+runs/pharm_training/spice_search/
+  search_summary.csv
+  best_config.json
+  best_full_config.json
+  trial_<id>/
+    config.json
+    console.log
+    metrics.csv
+    results.csv
+    checkpoints/
+
+Completed trials are skipped when the command is repeated. Interrupted trials
+resume from last.pt. Failed trials remain visible in search_summary.csv and keep
+their console logs for diagnosis.
+
+best_config.json contains the winning pilot configuration. best_full_config.json
+keeps its selected hyperparameters but restores the full dataset, test
+evaluation, and the long training budget.
+
+
+Long Full-Dataset Training
+--------------------------
+
+The full SPICE configuration allows up to 700 epochs. This is a maximum budget,
+not a requirement to train for all 700 epochs.
+
+The run uses the following safeguards:
+
+- AdamW optimization;
+- learning-rate reduction when validation performance plateaus;
+- early stopping after 20 epochs without a meaningful validation improvement;
+- a minimum of 25 epochs before divergence-based stopping;
+- immediate failure on NaN or infinite losses/gradients;
+- gradient clipping with a maximum norm of 10;
+- severe-divergence stopping when the validation score becomes more than four
+  times worse than the best score;
+- last and best recovery checkpoints;
+- archival epoch checkpoints every 25 epochs.
+
+Run the baseline full configuration directly with:
+
+python -m pharm_training.train \
+  --config pharm_training/configs/spice.json \
+  --device cuda
+
+The preferred workflow is to run the search first and then train the promoted
+winner:
+
+python -m pharm_training.train \
+  --config runs/pharm_training/spice_search/best_full_config.json \
+  --device cuda
+
+Rerunning the same command with the same output directory automatically resumes
+from checkpoints/last.pt.
+
+For final reporting, the winning configuration should be repeated with multiple
+random seeds. Hyperparameter selection from one validation split identifies a
+strong configuration, but it does not prove that the configuration is globally
+optimal or independent of random initialization.
+
+
+Training Outputs
+----------------
+
+A full run writes:
+
+runs/pharm_training/spice/
+  config.json
+  metrics.csv
+  results.csv
+  logs/
+  checkpoints/
+    last.pt
+    best.pt
+    trained_encoder.pt
+    epoch_0025.pt
+    epoch_0050.pt
+    ...
+
+metrics.csv contains separate training and validation values for:
+
+- total weighted loss;
+- energy Smooth-L1 loss;
+- force Smooth-L1 loss;
+- energy MAE in eV/atom;
+- force MAE in eV/Angstrom;
+- normalized validation selection score;
+- learning rate.
+
+best.pt contains the complete potential, optimizer, scheduler, model
+architecture, element list, and training configuration. trained_encoder.pt is
+the smaller transfer checkpoint containing the geometric Equiformer core and its
+architecture metadata.
+
+
+Connection to Pharmacophore Screening
+--------------------------------------
+
+The SPICE-specific element embedding and the energy prediction head are not
+transferred to pharmacophore screening. The transferable part is the Equiformer
+geometric core.
+
+This separation is necessary because the two stages use different input
+modalities:
+
+- SPICE pretraining starts from atomic element identities;
+- pharmacophore screening starts from molecular descriptors and RDKit-derived
+  feature definitions.
+
+For screening, descriptor vectors are first projected to the hidden dimension
+saved in the SPICE checkpoint. EquiformerAdjEncoder.encode_embedded_nodes() then
+produces invariant atom embeddings using the pretrained geometric core.
+
+SPICEPharmacophoreEncoder.from_pretrained() reads the saved architecture,
+constructs the descriptor projection and matching EquiformerAdj core, and loads
+only encoder_state_dict. This is the supported handoff from the SPICE training
+workflow to future pharmacophore screening.
+
+RDKit identifies pharmacophore features and supplies the atom IDs belonging to
+each feature. encode_pharmacophore_features() averages the relevant atom
+embeddings and returns:
+
+- one learned embedding per pharmacophore feature;
+- feature family and type;
+- the atom IDs defining the feature;
+- the 3D center of the feature.
+
+These feature-level embeddings and metadata can be passed to the existing
+Hungarian matching implementation. Hungarian assignment remains outside the
+Equiformer model because matching is a downstream screening decision, not part
+of quantum-potential pretraining.
+
+The pretrained checkpoint is not, by itself, a finished pharmacophore matcher.
+It must be connected to the descriptor input layer and fine-tuned or calibrated
+for the pharmacophore objective before it is used for ligand ranking.
+
+
+Reproducibility Checklist
+-------------------------
+
+1. Record the SPICE release and checksum.
+2. Keep the generated molecule-disjoint manifest.
+3. Preserve the search configuration and search_summary.csv.
+4. Select hyperparameters only from validation results.
+5. Evaluate the test split only after selecting the final configuration.
+6. Preserve best.pt, trained_encoder.pt, config.json, metrics.csv, and
+   results.csv.
+7. Repeat the final configuration across multiple seeds before reporting the
+   final error.
+
+
+References
+----------
+
+SPICE 2.0.1:
+https://doi.org/10.5281/zenodo.10975225
+
+SPICE dataset publication:
+https://doi.org/10.1038/s41597-022-01882-6
+
+SPICE 2 models and data publication:
+https://doi.org/10.1021/acs.jctc.4c00794
+
+Equiformer:
+https://arxiv.org/abs/2206.11990
