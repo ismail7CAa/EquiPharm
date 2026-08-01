@@ -1,49 +1,118 @@
 # Pharmacophore Encoder Pretraining
 
-This pipeline pretrains a copy of the adjacency-aware Equiformer core as an
-energy-conserving neural potential. ANI-2x and SPICE are separate scientific
-experiments: each has its own configuration, output directory, and loss balance.
+We use this pipeline to pretrain the adjacency-aware Equiformer core as an
+energy-conserving neural potential. The main experiment here uses SPICE 2.0.1
+and remains separate from our QM9 benchmarking pipeline.
+
+We chose SPICE because it provides atomic identities, 3D conformations,
+quantum-mechanical formation energies, and DFT gradients for drug-like
+molecules, peptides, and interacting molecular systems. These data let the
+encoder learn from both energies and forces. They also cover many of the atoms
+that later define hydrogen-bond, aromatic, charged, hydrophobic, and halogen
+pharmacophore environments.
+
+SPICE does not include pharmacophore labels. We extract those later with RDKit.
+At this stage, our aim is to learn a physically informed geometric encoder that
+can be adapted to pharmacophore feature representation and Hungarian matching.
 
 ## Data preparation
 
-The repository downloader writes into the repository's `data/` directory by
-default, regardless of the directory from which the script is called. Set
-`DATA_DIR=/absolute/path` when a machine stores large datasets elsewhere.
+Create the environment, download SPICE, and prepare its manifest:
 
 ```bash
-bash scripts/download_datasets.sh ani2x
-bash scripts/download_datasets.sh spice
+conda env create -f environment.yml
+conda activate equipharm
 
-python -m pharm_training.prepare_ani2x
+bash scripts/download_datasets.sh spice
 python -m pharm_training.prepare_spice
 ```
 
-Preparation does not duplicate the large HDF5 contents. It validates their
-schema, creates deterministic molecule-disjoint 90%/5%/5% splits, and writes a
-manifest. Splitting by molecule prevents conformations of the same molecule from
-leaking across training and evaluation. ANI-2x total energies are residualized
-against least-squares per-element reference energies fitted on the training split;
-SPICE uses its published formation energies directly.
+The downloader writes to `data/` by default. Set `DATA_DIR=/absolute/path` when
+the dataset must be stored on another disk. In that case, pass the same location
+to the preparation command:
+
+```bash
+DATA_DIR=/absolute/path bash scripts/download_datasets.sh spice
+python -m pharm_training.prepare_spice \
+  --source /absolute/path/SPICE/SPICE-2.0.1.hdf5 \
+  --output data/SPICE/prepared/manifest.json
+```
+
+Preparation validates the HDF5 structure and creates deterministic,
+molecule-disjoint 90%/5%/5% splits. It writes only a manifest and does not copy
+the large dataset. Keeping every conformation of a molecule in one split
+prevents closely related conformations from leaking into validation or test
+data.
 
 ## Training
 
-```bash
-python -m pharm_training.train \
-  --config pharm_training/configs/ani2x.json \
-  --device cuda
+The model predicts one total energy for each conformation. We obtain its atomic
+forces by differentiating that energy with respect to the 3D coordinates. This
+keeps the predicted force field energy-conserving.
 
-python -m pharm_training.train \
-  --config pharm_training/configs/spice.json \
+Our baseline uses a 6 Å graph, energy and force Smooth-L1 losses, AdamW, gradient
+clipping, and a validation-driven learning-rate scheduler. The configuration
+allows at most 700 epochs, but this is a safety ceiling rather than a target.
+Training normally stops earlier when validation performance no longer improves.
+NaN/Inf losses or gradients fail immediately, and severe validation divergence
+also stops the run.
+
+## SPICE hyperparameter search
+
+We select training hyperparameters from validation performance rather than
+assuming one manually chosen configuration is best. Preview the deterministic
+pilot trials without starting training:
+
+```bash
+python -m pharm_training.search \
+  --config pharm_training/configs/spice_search.json \
+  --device cuda \
+  --dry-run
+```
+
+Start or resume the search:
+
+```bash
+python -m pharm_training.search \
+  --config pharm_training/configs/spice_search.json \
   --device cuda
 ```
 
-ANI-2x uses a larger batch and lower force weight because it contains smaller
-organic molecules at the ωB97X/6-31G(d) level. SPICE uses a smaller batch, wider
-6 Å neighborhood, stronger force supervision, and shorter schedule because it is
-larger, contains systems up to 110 atoms, and targets noncovalent biomolecular
-interactions at ωB97M-D3(BJ)/def2-TZVPPD. These are documented starting recipes,
-not claims of dataset-optimal hyperparameters; final studies should report an
-ablation or validation-based search around them.
+Pilot trials use the same deterministic samples of 50,000 training and 10,000
+validation conformations. They compare learning rate, force weight, weight
+decay, and neighbor cap, with a maximum of 120 epochs per trial. We rank every
+trial using the same normalized combination of validation energy MAE and force
+MAE. This is important because the weighted training losses are not directly
+comparable when force_weight changes.
+
+The test split is not evaluated during this search. Interrupted trials resume
+from `last.pt`, completed trials are skipped, and failures keep `console.log`.
+
+Afterward, `best_config.json` describes the winning pilot and
+`best_full_config.json` promotes its selected parameters to the full dataset and
+700-epoch maximum. Review the ranking, then run the full confirmation:
+
+```bash
+python -m pharm_training.train \
+  --config runs/pharm_training/spice_search/best_full_config.json \
+  --device cuda
+```
+
+Only this final run evaluates the held-out test set. For final reported results,
+we should repeat the winning full configuration with multiple seeds.
+
+## Downstream pharmacophore interface
+
+`EquiformerAdjEncoder.encode_nodes()` returns invariant per-atom embeddings.
+`encode_pharmacophore_features()` accepts externally extracted feature metadata
+containing atom IDs and returns one embedding plus family/type/3D-center metadata
+per feature. Those outputs are ready for the repository's Hungarian matchers.
+For descriptor-based screening, project descriptors to the checkpoint's
+`hidden_dim` and pass them through `encode_embedded_nodes()`; the SPICE-specific
+element embedding is intentionally not transferred.
+We deliberately keep RDKit extraction and Hungarian assignment outside the
+potential. SPICE pretraining learns the molecular geometry; feature definition
+and matching remain downstream screening tasks.
 
 Each run produces:
 
@@ -54,7 +123,8 @@ runs/pharm_training/<dataset>/
   results.csv
   logs/
   checkpoints/
-    epoch_0001.pt
+    epoch_0025.pt
+    epoch_0050.pt
     ...
     last.pt
     best.pt
@@ -63,24 +133,34 @@ runs/pharm_training/<dataset>/
 
 `trained_encoder.pt` contains only the transferable Equiformer geometric core.
 The atomic-species input layer and potential head are deliberately excluded.
-ANI/SPICE atomic identities and pharmacophore-screening RDKit descriptors are
-different modalities, so copying those layers would be invalid. Load the core
-before pharmacophore-specific fine-tuning with:
+SPICE atomic identities and pharmacophore-screening descriptors are different
+modalities, so copying those layers would be invalid.
+
+The dedicated downstream adapter is
+`pharm_training/equiformer_encoder_pharmaco_feat.py`. It reconstructs the exact
+architecture saved by the SPICE run, creates a new descriptor projection, and
+loads only the pretrained geometric weights:
 
 ```python
-from benchmarking.Methods.equiformer_encoder_matching import EquiformerQM9
-from pharm_training.transfer import load_pretrained_core
+from pharm_training.equiformer_encoder_pharmaco_feat import SPICEPharmacophoreEncoder
 
-model = EquiformerQM9()
-load_pretrained_core(
-    model,
-    "runs/pharm_training/spice/checkpoints/trained_encoder.pt",
+model = SPICEPharmacophoreEncoder.from_pretrained(
+    checkpoint="runs/pharm_training/spice/checkpoints/trained_encoder.pt",
+    descriptor_dim=11,
 )
 ```
 
-The resulting model must be fine-tuned on the pharmacophore objective before it
-is used as a screening checkpoint. This pretraining checkpoint alone is not a
-calibrated pharmacophore matcher.
+The descriptor dimension must match `data.x` in the later screening workflow.
+RDKit feature dictionaries are attached to `data.pharmacophore_features`, after
+which `model.encode_pharmacophore_features(data)` returns the embeddings and
+metadata used by the Hungarian matcher.
+
+We must still fine-tune or calibrate the transferred encoder for the
+pharmacophore objective. The pretraining checkpoint alone is not a calibrated
+pharmacophore matcher or a ready-to-use screening checkpoint.
+
+The full scientific and technical record is in
+[`project_documentation/02_SPICE_EquiformerAdj_Pretraining.txt`](../project_documentation/02_SPICE_EquiformerAdj_Pretraining.txt).
 
 Sources: [ANI-2x](https://doi.org/10.5281/zenodo.10108942),
 [SPICE 2.0.1](https://doi.org/10.5281/zenodo.10975225), and the
