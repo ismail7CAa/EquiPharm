@@ -156,6 +156,13 @@ meaning of the cutoff. The sparse-neighbor cap is included in the hyperparameter
 search because a cap that is too small can remove useful local interactions,
 while an unlimited neighborhood increases memory use.
 
+The categorical element field is named atom_type in each PyG Data object. It
+must not be named element_index: PyTorch Geometric automatically increments
+batched attributes containing the word "index", because it assumes that they
+refer to graph-node indices. Incrementing an element category would produce
+values outside the 17-element embedding table. The encoder validates the
+atom_type range before performing the embedding lookup.
+
 
 Loss Function
 -------------
