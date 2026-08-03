@@ -44,6 +44,10 @@ the large dataset. Keeping every conformation of a molecule in one split
 prevents closely related conformations from leaking into validation or test
 data.
 
+Internally, element categories are stored as `atom_type`. This name is
+intentional: PyTorch Geometric increments batched fields containing `index`, so
+an attribute such as `element_index` would corrupt categorical element IDs.
+
 ## Training
 
 The model predicts one total energy for each conformation. We obtain its atomic
