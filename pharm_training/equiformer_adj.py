@@ -186,6 +186,7 @@ class EquiformerAdjPotential(nn.Module):
         num_elements: int,
         hidden_dim: int = 128,
         architecture: dict[str, Any] | EquiformerAdjConfig | None = None,
+        enable_force_head: bool = False,
     ) -> None:
         super().__init__()
         if isinstance(architecture, EquiformerAdjConfig):
@@ -198,10 +199,12 @@ class EquiformerAdjPotential(nn.Module):
         self.atomic_energy = nn.Sequential(
             nn.Linear(config.hidden_dim, config.hidden_dim), nn.SiLU(), nn.Linear(config.hidden_dim, 1)
         )
-        # Degree-1 channels transform as 3D vectors. A channel-wise linear
-        # combination therefore produces an equivariant direct force prediction.
-        self.force_channel_weights = nn.Parameter(torch.zeros(config.hidden_dim))
-        nn.init.normal_(self.force_channel_weights, std=config.hidden_dim ** -0.5)
+        self.force_channel_weights = None
+        if enable_force_head:
+            # Degree-1 channels transform as 3D vectors. A channel-wise linear
+            # combination therefore produces an equivariant direct force prediction.
+            self.force_channel_weights = nn.Parameter(torch.zeros(config.hidden_dim))
+            nn.init.normal_(self.force_channel_weights, std=config.hidden_dim ** -0.5)
 
     @property
     def architecture_config(self) -> dict[str, Any]:
@@ -228,6 +231,8 @@ class EquiformerAdjPotential(nn.Module):
 
     def predict_energy_and_direct_forces(self, data):
         """Predict energy and equivariant forces without second derivatives."""
+        if self.force_channel_weights is None:
+            raise RuntimeError("This model was created without a direct force head")
         embedded = self.species_embedding(data.atom_type)
         fibers, mask = self.encoder.encode_embedded_fibers(data, embedded)
         scalar_nodes = self.encoder._type0(fibers)

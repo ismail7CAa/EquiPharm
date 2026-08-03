@@ -19,7 +19,7 @@ BOHR_TO_ANGSTROM = 0.529177210903
 class PotentialDataset(Dataset):
     def __init__(
         self, manifest_path: Path, split: str, cutoff: float, limit: int = -1,
-        sample_seed: int = 42,
+        sample_seed: int = 42, include_forces: bool = True,
     ):
         manifest_path = Path(manifest_path)
         self.manifest = json.loads(manifest_path.read_text())
@@ -40,6 +40,7 @@ class PotentialDataset(Dataset):
                 "python -m pharm_training.prepare_spice from the current repository."
             )
         self.cutoff = cutoff
+        self.include_forces = include_forces
         self.elements = self.manifest["elements"]
         self.element_to_index = {z: index for index, z in enumerate(self.elements)}
         self.atomic_refs = dict(zip(self.elements, self.manifest["atomic_reference_energies_hartree"]))
@@ -84,7 +85,7 @@ class PotentialDataset(Dataset):
         energy *= HARTREE_TO_EV
 
         force = None
-        if record["force_key"] is not None:
+        if self.include_forces and record["force_key"] is not None:
             force = np.asarray(group[record["force_key"]][conformation_index], dtype=np.float32)
             if self.manifest["force_is_negative_gradient"]:
                 force = -force

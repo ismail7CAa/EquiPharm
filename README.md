@@ -23,7 +23,7 @@ flowchart TB
   subgraph S["Pipeline 2: SPICE EquiformerAdj Pretraining"]
     S1["SPICE 2.0.1<br/>atoms, 3D conformations, energies, gradients"]
     S2["Molecule-disjoint splits<br/>90% train, 5% validation, 5% test"]
-    S3["Energy-conserving EquiformerAdj<br/>energy and force learning"]
+    S3["EquiformerAdj pretraining<br/>formation-energy learning"]
     S4["Validation-based hyperparameter search"]
     S5["Transferable geometric encoder"]
 
@@ -69,9 +69,9 @@ The first part of the framework evaluates multiple 2D and 3D graph neural networ
 
 We also pretrain the adjacency-aware Equiformer separately on SPICE 2.0.1. We
 chose SPICE because it provides atomic identities, 3D conformations,
-quantum-mechanical formation energies, and energy gradients. This lets us train
-the encoder with both energy and force supervision before adapting its geometric
-representation to pharmacophore features.
+quantum-mechanical formation energies, and energy gradients. The current
+workflow deliberately trains only on formation energy before adapting the
+geometric representation to pharmacophore features.
 
 The screening stage uses Equiformer-based embeddings, torsion optimization,
 RDKit pharmacophore feature extraction, and active-versus-decoy evaluation. The
@@ -100,12 +100,12 @@ This stage provides a controlled comparison of model families and produces check
 
 ### 2. SPICE EquiformerAdj Pretraining
 
-We train EquiformerAdj jointly on SPICE energies and forces. The model predicts
-total molecular energy from invariant degree-0 features and atomic forces from
-equivariant degree-1 features. This direct force head avoids unstable second
-derivatives through the `equiformer-pytorch` coordinate basis. A resumable
-hyperparameter search compares learning rate, force-loss weight, weight decay,
-and graph-neighbor capacity using validation energy and force errors.
+We train EquiformerAdj on SPICE formation energies. The model predicts total
+molecular energy from invariant degree-0 features, while the 3D coordinates and
+adjacency still determine the geometric representation. Force arrays are not
+loaded and no force head or coordinate gradient is used. A resumable
+hyperparameter search compares learning rate, weight decay, and graph-neighbor
+capacity using validation energy MAE.
 
 The SPICE element embedding and energy head are used only during pretraining.
 The geometric Equiformer core is saved separately so that it can later be
@@ -252,7 +252,7 @@ preparation and encoder-pretraining commands.
 
 We use SPICE for this stage because it combines the atomic and geometric
 information needed later for pharmacophore recognition with quantum-mechanical
-energy and force supervision. SPICE does not provide pharmacophore labels
+quantum-chemical energy supervision. SPICE does not provide pharmacophore labels
 directly; RDKit extracts those features later. Pretraining first gives the
 Equiformer a physically informed representation of atoms, molecular geometry,
 and non-covalent interactions.
@@ -291,8 +291,8 @@ python -m pharm_training.search \
   --device cuda
 ```
 
-The search tests 18 deterministic pilot configurations. It varies learning
-rate, force weight, weight decay, and maximum sparse neighbors. Completed trials
+The search tests all 18 pilot configurations. It varies learning rate, weight
+decay, and maximum sparse neighbors. Completed trials
 are skipped, interrupted trials resume from their last checkpoint, and the test
 split remains untouched during model selection.
 

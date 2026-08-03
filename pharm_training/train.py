@@ -59,13 +59,14 @@ def scheduler_for(optimizer, config):
 def epoch_pass(model, loader, device, config, optimizer=None):
     training = optimizer is not None
     model.train(training)
+    force_mode = config.get("force_mode", "energy_only")
     totals = {
         "loss": 0.0,
         "energy_loss": 0.0,
-        "force_loss": 0.0,
         "energy_mae_ev_per_atom": 0.0,
-        "force_mae_ev_per_angstrom": 0.0,
     }
+    if force_mode != "energy_only":
+        totals.update({"force_loss": 0.0, "force_mae_ev_per_angstrom": 0.0})
     examples = 0
     skipped_nonfinite = 0
     for batch_number, batch in enumerate(
@@ -84,11 +85,13 @@ def epoch_pass(model, loader, device, config, optimizer=None):
                     "PyG incremented an attribute named element_index while batching."
                 )
         batch = batch.to(device)
-        force_mode = config.get("force_mode", "direct")
         batch.pos.requires_grad_(force_mode == "energy_gradient")
         if training:
             optimizer.zero_grad(set_to_none=True)
-        if force_mode == "direct":
+        if force_mode == "energy_only":
+            predicted_energy = model(batch)
+            predicted_force = None
+        elif force_mode == "direct":
             predicted_energy, predicted_force = model.predict_energy_and_direct_forces(batch)
         elif force_mode == "energy_gradient":
             predicted_energy = model(batch)
@@ -101,13 +104,14 @@ def epoch_pass(model, loader, device, config, optimizer=None):
         energy_error = (predicted_energy - batch.y.view(-1)) / atom_counts
         energy_loss = F.smooth_l1_loss(energy_error, torch.zeros_like(energy_error))
         energy_mae = energy_error.abs().mean()
-        if hasattr(batch, "force"):
+        if force_mode == "energy_only":
+            loss = config["energy_weight"] * energy_loss
+        elif predicted_force is not None and hasattr(batch, "force"):
             force_loss = F.smooth_l1_loss(predicted_force, batch.force)
             force_mae = (predicted_force - batch.force).abs().mean()
+            loss = config["energy_weight"] * energy_loss + config["force_weight"] * force_loss
         else:
-            force_loss = predicted_energy.new_zeros(())
-            force_mae = predicted_energy.new_zeros(())
-        loss = config["energy_weight"] * energy_loss + config["force_weight"] * force_loss
+            raise RuntimeError(f"force_mode={force_mode} requires force labels")
         if not torch.isfinite(loss):
             raise FloatingPointError("Non-finite training loss encountered")
         if training:
@@ -144,9 +148,10 @@ def epoch_pass(model, loader, device, config, optimizer=None):
         examples += count
         totals["loss"] += loss.detach().item() * count
         totals["energy_loss"] += energy_loss.detach().item() * count
-        totals["force_loss"] += force_loss.detach().item() * count
         totals["energy_mae_ev_per_atom"] += energy_mae.detach().item() * count
-        totals["force_mae_ev_per_angstrom"] += force_mae.detach().item() * count
+        if force_mode != "energy_only":
+            totals["force_loss"] += force_loss.detach().item() * count
+            totals["force_mae_ev_per_angstrom"] += force_mae.detach().item() * count
     if not examples:
         raise RuntimeError(
             "No usable batches were produced; reduce batch size, inspect the manifest, "
@@ -164,10 +169,13 @@ def validation_score(metrics, config):
     energy_fraction = config.get("selection_energy_fraction", 0.5)
     if energy_scale <= 0 or force_scale <= 0 or not 0 <= energy_fraction <= 1:
         raise ValueError("Validation scales must be positive and energy fraction must be in [0, 1]")
-    return (
-        energy_fraction * metrics["energy_mae_ev_per_atom"] / energy_scale
-        + (1 - energy_fraction) * metrics["force_mae_ev_per_angstrom"] / force_scale
-    )
+    energy_score = metrics["energy_mae_ev_per_atom"] / energy_scale
+    if energy_fraction == 1:
+        return energy_score
+    force_score = metrics["force_mae_ev_per_angstrom"] / force_scale
+    if energy_fraction == 0:
+        return force_score
+    return energy_fraction * energy_score + (1 - energy_fraction) * force_score
 
 
 def save(path, payload):
@@ -200,7 +208,10 @@ def main():
         torch.cuda.manual_seed_all(seed)
 
     manifest = Path(config["manifest"])
-    dataset_options = {"sample_seed": config.get("subset_seed", seed)}
+    dataset_options = {
+        "sample_seed": config.get("subset_seed", seed),
+        "include_forces": config.get("force_mode", "energy_only") != "energy_only",
+    }
     train_data = PotentialDataset(
         manifest, "train", config["cutoff"], config["train_limit"], **dataset_options
     )
@@ -220,7 +231,9 @@ def main():
     checkpoints.mkdir(parents=True, exist_ok=True)
     (output / "config.json").write_text(json.dumps(config, indent=2))
     model = EquiformerAdjPotential(
-        len(train_data.elements), architecture=config.get("architecture")
+        len(train_data.elements),
+        architecture=config.get("architecture"),
+        enable_force_head=config.get("force_mode") == "direct",
     ).to(device)
     optimizer = AdamW(
         model.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"]
@@ -242,8 +255,9 @@ def main():
     mode = "a" if start_epoch > 1 and metrics_path.exists() else "w"
     started = time.time()
     with metrics_path.open(mode, newline="") as handle, SummaryWriter(output / "logs") as writer:
-        metric_names = ["loss", "energy_loss", "force_loss", "energy_mae_ev_per_atom",
-                        "force_mae_ev_per_angstrom"]
+        metric_names = ["loss", "energy_loss", "energy_mae_ev_per_atom"]
+        if config.get("force_mode", "energy_only") != "energy_only":
+            metric_names += ["force_loss", "force_mae_ev_per_angstrom"]
         fields = (["epoch", "lr"] + [f"train_{key}" for key in metric_names]
                   + [f"val_{key}" for key in metric_names] + ["val_score"])
         csv_writer = csv.DictWriter(handle, fieldnames=fields)

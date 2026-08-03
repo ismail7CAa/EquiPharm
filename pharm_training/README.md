@@ -1,13 +1,14 @@
 # Pharmacophore Encoder Pretraining
 
 We use this pipeline to pretrain the adjacency-aware Equiformer core with SPICE
-energies and forces. The experiment remains separate from our QM9 benchmarking
+formation energies. The experiment remains separate from our QM9 benchmarking
 pipeline.
 
 We chose SPICE because it provides atomic identities, 3D conformations,
 quantum-mechanical formation energies, and DFT gradients for drug-like
-molecules, peptides, and interacting molecular systems. These data let the
-encoder learn from both energies and forces. They also cover many of the atoms
+molecules, peptides, and interacting molecular systems. The current workflow
+uses formation energy only; gradient/force arrays are not loaded. SPICE also
+covers many of the atoms
 that later define hydrogen-bond, aromatic, charged, hydrophobic, and halogen
 pharmacophore environments.
 
@@ -50,19 +51,12 @@ an attribute such as `element_index` would corrupt categorical element IDs.
 
 ## Training
 
-The model predicts one total energy from its invariant degree-0 features and one
-3D force vector per atom from its equivariant degree-1 features. We use this
-direct force head because force-loss backpropagation through an energy gradient
-requires second derivatives, which are numerically unstable in the installed
-`equiformer-pytorch` coordinate-basis implementation. The direct head preserves
-rotation equivariance and gives the encoder force supervision with ordinary
-first-order backpropagation, but it is not an energy-conserving force field.
+The model predicts one total energy from its invariant degree-0 features. The
+atomic identities, 3D coordinates, and 6 Å adjacency still shape every internal
+atom representation, but no atomic force target is read and no force head is
+created. The documented configuration uses `force_mode: energy_only`.
 
-The optional `energy_gradient` force mode remains available for controlled
-experiments with an implementation or precision that supports stable second
-derivatives. Our documented SPICE workflow uses `force_mode: direct`.
-
-Our baseline uses a 6 Å graph, energy and force Smooth-L1 losses, AdamW, gradient
+Our baseline uses a 6 Å graph, an energy Smooth-L1 loss, AdamW, gradient
 clipping, and a validation-driven learning-rate scheduler. The configuration
 allows at most 700 epochs, but this is a safety ceiling rather than a target.
 Training normally stops earlier when validation performance no longer improves.
@@ -98,11 +92,10 @@ python -m pharm_training.search \
 ```
 
 Pilot trials use the same deterministic samples of 50,000 training and 10,000
-validation conformations. They compare learning rate, force weight, weight
-decay, and neighbor cap (16, 24, or 32), with a maximum of 120 epochs per trial. We rank every
-trial using the same normalized combination of validation energy MAE and force
-MAE. This is important because the weighted training losses are not directly
-comparable when force_weight changes.
+validation conformations. They compare learning rate, weight decay, and neighbor
+cap (16, 24, or 32), with a maximum of 120 epochs per trial. The resulting
+3 × 2 × 3 grid contains 18 trials. We rank every trial by normalized validation
+energy MAE.
 
 The test split is not evaluated during this search. Interrupted trials resume
 from `last.pt`, completed trials are skipped, and failures keep `console.log`.

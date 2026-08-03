@@ -11,7 +11,7 @@ pharmacophore feature representation and matching.
 This training stage is independent of the QM9 benchmarking experiments. QM9 is
 still useful for comparing molecular representation models and property
 prediction, but the SPICE experiment has a different purpose: it trains the
-EquiformerAdj core directly from quantum-mechanical energies and forces.
+EquiformerAdj core directly from quantum-mechanical formation energies.
 
 
 Why We Chose SPICE
@@ -26,7 +26,8 @@ systems. For every conformation used here, it provides:
 - atomic numbers, which identify the chemical elements;
 - three-dimensional atomic coordinates;
 - quantum-mechanical formation energies;
-- DFT energy gradients, which we convert to atomic forces;
+- DFT energy gradients, which are available in SPICE but are not loaded by the
+  current energy-only workflow;
 - systems containing H, Li, B, C, N, O, F, Na, Mg, Si, P, S, Cl, K, Ca, Br,
   and I in SPICE 2.0.1.
 
@@ -59,7 +60,7 @@ The two experiments answer different questions:
 - QM9 benchmarking asks which model family performs well for molecular property
   prediction on small molecules.
 - SPICE pretraining asks whether EquiformerAdj can learn a transferable 3D
-  molecular representation from quantum-mechanical energies and forces.
+  molecular representation from quantum-mechanical formation energies.
 
 The SPICE implementation is kept under:
 
@@ -120,28 +121,12 @@ Formation energies are converted from Hartree to electronvolt:
 
 energy_eV = energy_hartree * 27.211386245988
 
-SPICE stores the DFT total gradient. Force is the negative energy gradient:
-
-force = -dE/dr
-
-After the unit conversion, force is expressed in eV/Angstrom.
-
-The network predicts one total energy per molecular conformation from invariant
-degree-0 features. It predicts one 3D atomic force from equivariant degree-1
-features. A learned linear combination across degree-1 channels remains a 3D
-equivariant vector, so rotating the molecule rotates the predicted forces.
-
-We originally calculated predicted forces as the negative coordinate gradient
-of predicted energy. Training against those forces required second derivatives
-through the coordinate rotations used by equiformer-pytorch. In practice, this
-produced finite losses followed by non-finite parameter-gradient norms. The
-documented workflow therefore uses force_mode = direct. It keeps force
-supervision and stable first-order backpropagation, but it does not constrain
-the direct force prediction to equal the energy gradient.
-
-The energy_gradient mode remains available as an experimental option for a
-backend or numerical precision that supports stable second derivatives. It is
-not used by the default SPICE search.
+SPICE also stores DFT total gradients, but the current workflow deliberately
+does not read or optimize against them. The network predicts one total formation
+energy per molecular conformation from invariant degree-0 features. Atomic
+identities, coordinates, and adjacency still determine the internal geometric
+representation. The configured mode is force_mode = energy_only, so no force
+head is created and no coordinate gradient is calculated.
 
 
 Graph Construction
@@ -182,40 +167,19 @@ systems more comparable.
 
 The training objective is:
 
-training_loss = energy_weight * SmoothL1(energy_error_per_atom)
-              + force_weight  * SmoothL1(force_error)
+training_loss = SmoothL1(energy_error_per_atom)
 
-The default starting weights are:
-
-- energy weight: 1
-- force weight: 50
-
-Force weight is treated as a hyperparameter rather than a fixed scientific
-constant. SPICE provides three force components per atom, so force supervision
-contains much more information per conformation than the single energy value.
-Testing different force weights allows us to balance energy accuracy and local
-geometric accuracy empirically.
+There is no force term in the current objective.
 
 
 Validation Score and Model Selection
 ------------------------------------
 
-We do not rank hyperparameter trials by their weighted training loss. That would
-be unfair because changing force_weight also changes the numerical scale of the
-loss.
-
 Every trial is ranked with the same normalized validation score:
 
-validation_score = 0.5 * energy_MAE_eV_per_atom / 0.043
-                 + 0.5 * force_MAE_eV_per_Angstrom / 0.10
+validation_score = energy_MAE_eV_per_atom / 0.043
 
-Lower is better. The fixed reference scales make energy and force errors
-comparable without allowing one trial to benefit simply from a different loss
-weight.
-
-The individual validation energy MAE and force MAE are always saved alongside
-this combined score. We therefore keep the underlying scientific errors visible
-instead of reporting only one aggregate number.
+Lower is better. Validation energy MAE in eV/atom is also saved directly.
 
 The test split is not evaluated during hyperparameter optimization. It is used
 only after the winning validation configuration has been selected and promoted
@@ -236,14 +200,11 @@ pharm_training/configs/spice_search.json
 The pilot search tests combinations of:
 
 - learning rate: 1e-4, 2e-4, and 5e-4;
-- force weight: 10, 50, and 100;
 - weight decay: 1e-6 and 1e-5;
 - maximum sparse neighbors: 16, 24, and 32.
 
-The complete Cartesian grid contains 54 combinations. The current pilot budget
-selects 18 combinations deterministically with seed 42. This keeps the first
-search computationally manageable while still exploring different optimization
-and graph-density settings.
+The complete 3 x 2 x 3 Cartesian grid contains 18 combinations, and the pilot
+runs all 18 in deterministic order.
 
 Every pilot trial uses the same deterministic sample of 50,000 training and
 10,000 validation conformations. A pilot can train for at most 120 epochs, but
@@ -349,9 +310,7 @@ metrics.csv contains separate training and validation values for:
 
 - total weighted loss;
 - energy Smooth-L1 loss;
-- force Smooth-L1 loss;
 - energy MAE in eV/atom;
-- force MAE in eV/Angstrom;
 - normalized validation selection score;
 - learning rate.
 
