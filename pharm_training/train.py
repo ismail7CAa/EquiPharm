@@ -68,6 +68,18 @@ def epoch_pass(model, loader, device, config, optimizer=None):
     }
     examples = 0
     for batch in tqdm(loader, desc="train" if training else "eval", leave=False):
+        if not hasattr(batch, "atom_type"):
+            raise AttributeError("SPICE batch is missing the categorical atom_type field")
+        if batch.atom_type.numel():
+            minimum = int(batch.atom_type.min())
+            maximum = int(batch.atom_type.max())
+            embedding_size = model.species_embedding.num_embeddings
+            if minimum < 0 or maximum >= embedding_size:
+                raise IndexError(
+                    f"atom_type range [{minimum}, {maximum}] is outside the element "
+                    f"embedding range [0, {embedding_size - 1}]. This usually means "
+                    "PyG incremented an attribute named element_index while batching."
+                )
         batch = batch.to(device)
         batch.pos.requires_grad_(True)
         if training:
