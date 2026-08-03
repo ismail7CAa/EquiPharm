@@ -154,7 +154,7 @@ Setting num_neighbors to zero is deliberate. The graph already represents the
 6 Angstrom neighborhood, so adding extra nearest atoms could silently change the
 meaning of the cutoff. The sparse-neighbor cap is included in the hyperparameter
 search because a cap that is too small can remove useful local interactions,
-while an unlimited neighborhood increases memory use.
+while a high cap increases memory use.
 
 The categorical element field is named atom_type in each PyG Data object. It
 must not be named element_index: PyTorch Geometric automatically increments
@@ -229,7 +229,7 @@ The pilot search tests combinations of:
 - learning rate: 1e-4, 2e-4, and 5e-4;
 - force weight: 10, 50, and 100;
 - weight decay: 1e-6 and 1e-5;
-- maximum sparse neighbors: 32, 48, and unlimited.
+- maximum sparse neighbors: 32, 48, and 128.
 
 The complete Cartesian grid contains 54 combinations. The current pilot budget
 selects 18 combinations deterministically with seed 42. This keeps the first
