@@ -1,7 +1,7 @@
 """Reusable screening workflow for feature-level EquiPharm matching variants."""
 
 from __future__ import annotations
-
+import random
 import json
 from pathlib import Path
 
@@ -214,6 +214,9 @@ def screen_actives_decoys_matching(
     exclude_rings: bool = True,
     one_per_bond: bool = False,
     limit: int | None = None,
+    num_actives: int | None = None,
+    num_decoys: int | None = None,
+    seed: int = 1,
     distance_sigma: float = 1.0,
     geometry_penalty_weight: float = 1.0,
     enforce_feature_family: bool = True,
@@ -272,6 +275,11 @@ def screen_actives_decoys_matching(
 
     active_files = sorted(Path(actives_dir).glob("*.sdf"))
     decoy_files = sorted(Path(decoys_dir).glob("*.sdf"))
+    rng = random.Random(seed)
+    if num_actives is not None:
+        active_files = rng.sample(active_files, min(num_actives, len(active_files)))
+    if num_decoys is not None:
+        decoy_files = rng.sample(decoy_files, min(num_decoys, len(decoy_files)))
     candidates = [(path, 1) for path in active_files] + [(path, 0) for path in decoy_files]
     if limit is not None:
         candidates = candidates[:limit]

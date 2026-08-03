@@ -72,7 +72,11 @@ class EquiformerQM9(nn.Module):
 
             # --- key efficiency / "molecular graph" knobs ---
             attend_sparse_neighbors=True,  # requires adj_mat
+<<<<<<< Updated upstream
             num_neighbors=4,               # match equiformer_architecture.py
+=======
+            num_neighbors=4,               # 0 = bonds only; >0 adds closest geometric neighbors
+>>>>>>> Stashed changes
             num_adj_degrees_embed=2,       # adds 2-hop connectivity embedding
             max_sparse_neighbors=16,       # cap total sparse neighbors
 
