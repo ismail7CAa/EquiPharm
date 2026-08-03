@@ -99,7 +99,7 @@ python -m pharm_training.search \
 
 Pilot trials use the same deterministic samples of 50,000 training and 10,000
 validation conformations. They compare learning rate, force weight, weight
-decay, and neighbor cap (32, 48, or 128), with a maximum of 120 epochs per trial. We rank every
+decay, and neighbor cap (16, 24, or 32), with a maximum of 120 epochs per trial. We rank every
 trial using the same normalized combination of validation energy MAE and force
 MAE. This is important because the weighted training losses are not directly
 comparable when force_weight changes.

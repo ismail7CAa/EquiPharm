@@ -238,7 +238,7 @@ The pilot search tests combinations of:
 - learning rate: 1e-4, 2e-4, and 5e-4;
 - force weight: 10, 50, and 100;
 - weight decay: 1e-6 and 1e-5;
-- maximum sparse neighbors: 32, 48, and 128.
+- maximum sparse neighbors: 16, 24, and 32.
 
 The complete Cartesian grid contains 54 combinations. The current pilot budget
 selects 18 combinations deterministically with seed 42. This keeps the first
