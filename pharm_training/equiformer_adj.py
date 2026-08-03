@@ -91,7 +91,12 @@ class EquiformerAdjEncoder(nn.Module):
 
     def encode_nodes(self, data):
         """Encode SPICE nodes using the dataset-specific element embedding."""
-        return self.encode_embedded_nodes(data, self.species_embedding(data.element_index))
+        if not hasattr(data, "atom_type"):
+            raise AttributeError(
+                "SPICE batches must contain data.atom_type; regenerate batches with "
+                "the current pharm_training.data implementation"
+            )
+        return self.encode_embedded_nodes(data, self.species_embedding(data.atom_type))
 
     @staticmethod
     def _valid_features(features: Iterable, num_atoms: int, mask=None):
