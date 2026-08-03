@@ -81,13 +81,19 @@ def epoch_pass(model, loader, device, config, optimizer=None):
                     "PyG incremented an attribute named element_index while batching."
                 )
         batch = batch.to(device)
-        batch.pos.requires_grad_(True)
+        force_mode = config.get("force_mode", "direct")
+        batch.pos.requires_grad_(force_mode == "energy_gradient")
         if training:
             optimizer.zero_grad(set_to_none=True)
-        predicted_energy = model(batch)
-        predicted_force = -torch.autograd.grad(
-            predicted_energy.sum(), batch.pos, create_graph=training, retain_graph=training
-        )[0]
+        if force_mode == "direct":
+            predicted_energy, predicted_force = model.predict_energy_and_direct_forces(batch)
+        elif force_mode == "energy_gradient":
+            predicted_energy = model(batch)
+            predicted_force = -torch.autograd.grad(
+                predicted_energy.sum(), batch.pos, create_graph=training, retain_graph=training
+            )[0]
+        else:
+            raise ValueError(f"Unknown force_mode: {force_mode}")
         atom_counts = torch.bincount(batch.batch, minlength=predicted_energy.numel()).clamp_min(1)
         energy_error = (predicted_energy - batch.y.view(-1)) / atom_counts
         energy_loss = F.smooth_l1_loss(energy_error, torch.zeros_like(energy_error))

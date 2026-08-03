@@ -100,9 +100,10 @@ This stage provides a controlled comparison of model families and produces check
 
 ### 2. SPICE EquiformerAdj Pretraining
 
-We train EquiformerAdj as an energy-conserving neural potential on SPICE. The
-model predicts a total molecular energy, and atomic forces are obtained as the
-negative gradient of that energy with respect to the coordinates. A resumable
+We train EquiformerAdj jointly on SPICE energies and forces. The model predicts
+total molecular energy from invariant degree-0 features and atomic forces from
+equivariant degree-1 features. This direct force head avoids unstable second
+derivatives through the `equiformer-pytorch` coordinate basis. A resumable
 hyperparameter search compares learning rate, force-loss weight, weight decay,
 and graph-neighbor capacity using validation energy and force errors.
 

@@ -1,4 +1,4 @@
-"""Configurable EquiformerAdj encoder and energy-conserving SPICE potential."""
+"""Configurable EquiformerAdj encoder with SPICE energy and force heads."""
 
 from __future__ import annotations
 
@@ -80,8 +80,18 @@ class EquiformerAdjEncoder(nn.Module):
             return output[0]
         return output
 
-    def encode_embedded_nodes(self, data, embedded_features):
-        """Encode already-projected node descriptors from any downstream modality."""
+    @staticmethod
+    def _type1(output):
+        if hasattr(output, "type1"):
+            return output.type1
+        if isinstance(output, dict):
+            return output[1]
+        if isinstance(output, (tuple, list)) and len(output) > 1:
+            return output[1]
+        raise TypeError("Equiformer output does not contain degree-1 features")
+
+    def encode_embedded_fibers(self, data, embedded_features):
+        """Encode projected descriptors and retain scalar and vector features."""
         if embedded_features.size(-1) != self.config.hidden_dim:
             raise ValueError(
                 f"Expected projected feature width {self.config.hidden_dim}, "
@@ -91,6 +101,11 @@ class EquiformerAdjEncoder(nn.Module):
         coordinates, _ = to_dense_batch(data.pos, data.batch)
         adjacency = to_dense_adj(data.edge_index, batch=data.batch).bool()
         output = self.model(features, coordinates, mask=mask, adj_mat=adjacency)
+        return output, mask
+
+    def encode_embedded_nodes(self, data, embedded_features):
+        """Encode already-projected node descriptors from any downstream modality."""
+        output, mask = self.encode_embedded_fibers(data, embedded_features)
         return self._type0(output), mask
 
     def encode_nodes(self, data):
@@ -183,6 +198,10 @@ class EquiformerAdjPotential(nn.Module):
         self.atomic_energy = nn.Sequential(
             nn.Linear(config.hidden_dim, config.hidden_dim), nn.SiLU(), nn.Linear(config.hidden_dim, 1)
         )
+        # Degree-1 channels transform as 3D vectors. A channel-wise linear
+        # combination therefore produces an equivariant direct force prediction.
+        self.force_channel_weights = nn.Parameter(torch.zeros(config.hidden_dim))
+        nn.init.normal_(self.force_channel_weights, std=config.hidden_dim ** -0.5)
 
     @property
     def architecture_config(self) -> dict[str, Any]:
@@ -206,6 +225,18 @@ class EquiformerAdjPotential(nn.Module):
     def forward(self, data):
         nodes, mask = self.encode_nodes(data)
         return (self.atomic_energy(nodes).squeeze(-1) * mask).sum(dim=1)
+
+    def predict_energy_and_direct_forces(self, data):
+        """Predict energy and equivariant forces without second derivatives."""
+        embedded = self.species_embedding(data.atom_type)
+        fibers, mask = self.encoder.encode_embedded_fibers(data, embedded)
+        scalar_nodes = self.encoder._type0(fibers)
+        vector_nodes = self.encoder._type1(fibers)
+        energy = (self.atomic_energy(scalar_nodes).squeeze(-1) * mask).sum(dim=1)
+        dense_force = torch.einsum(
+            "bndm,d->bnm", vector_nodes, self.force_channel_weights
+        )
+        return energy, dense_force[mask]
 
     def transferable_state_dict(self):
         """Core weights compatible with the current pharmacophore encoders."""

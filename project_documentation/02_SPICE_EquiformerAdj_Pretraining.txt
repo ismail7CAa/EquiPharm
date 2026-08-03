@@ -126,13 +126,22 @@ force = -dE/dr
 
 After the unit conversion, force is expressed in eV/Angstrom.
 
-The network predicts one total energy per molecular conformation. Atomic forces
-are not predicted by an independent output head. Instead, they are calculated
-by differentiating the predicted energy with respect to the atomic coordinates:
+The network predicts one total energy per molecular conformation from invariant
+degree-0 features. It predicts one 3D atomic force from equivariant degree-1
+features. A learned linear combination across degree-1 channels remains a 3D
+equivariant vector, so rotating the molecule rotates the predicted forces.
 
-predicted_force = -gradient(predicted_energy, position)
+We originally calculated predicted forces as the negative coordinate gradient
+of predicted energy. Training against those forces required second derivatives
+through the coordinate rotations used by equiformer-pytorch. In practice, this
+produced finite losses followed by non-finite parameter-gradient norms. The
+documented workflow therefore uses force_mode = direct. It keeps force
+supervision and stable first-order backpropagation, but it does not constrain
+the direct force prediction to equal the energy gradient.
 
-This makes the learned force field energy-conserving by construction.
+The energy_gradient mode remains available as an experimental option for a
+backend or numerical precision that supports stable second derivatives. It is
+not used by the default SPICE search.
 
 
 Graph Construction

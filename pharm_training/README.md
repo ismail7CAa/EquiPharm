@@ -1,8 +1,8 @@
 # Pharmacophore Encoder Pretraining
 
-We use this pipeline to pretrain the adjacency-aware Equiformer core as an
-energy-conserving neural potential. The main experiment here uses SPICE 2.0.1
-and remains separate from our QM9 benchmarking pipeline.
+We use this pipeline to pretrain the adjacency-aware Equiformer core with SPICE
+energies and forces. The experiment remains separate from our QM9 benchmarking
+pipeline.
 
 We chose SPICE because it provides atomic identities, 3D conformations,
 quantum-mechanical formation energies, and DFT gradients for drug-like
@@ -50,9 +50,17 @@ an attribute such as `element_index` would corrupt categorical element IDs.
 
 ## Training
 
-The model predicts one total energy for each conformation. We obtain its atomic
-forces by differentiating that energy with respect to the 3D coordinates. This
-keeps the predicted force field energy-conserving.
+The model predicts one total energy from its invariant degree-0 features and one
+3D force vector per atom from its equivariant degree-1 features. We use this
+direct force head because force-loss backpropagation through an energy gradient
+requires second derivatives, which are numerically unstable in the installed
+`equiformer-pytorch` coordinate-basis implementation. The direct head preserves
+rotation equivariance and gives the encoder force supervision with ordinary
+first-order backpropagation, but it is not an energy-conserving force field.
+
+The optional `energy_gradient` force mode remains available for controlled
+experiments with an implementation or precision that supports stable second
+derivatives. Our documented SPICE workflow uses `force_mode: direct`.
 
 Our baseline uses a 6 Å graph, energy and force Smooth-L1 losses, AdamW, gradient
 clipping, and a validation-driven learning-rate scheduler. The configuration
