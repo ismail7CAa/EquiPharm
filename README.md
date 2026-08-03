@@ -291,8 +291,9 @@ python -m pharm_training.search \
   --device cuda
 ```
 
-The search tests all 18 pilot configurations. It varies learning rate, weight
-decay, and maximum sparse neighbors. Completed trials
+The search tests 24 deterministic pilot configurations selected from a
+54-combination grid. It varies learning rate, weight decay, extra geometric
+neighbors, and maximum sparse neighbors. Completed trials
 are skipped, interrupted trials resume from their last checkpoint, and the test
 split remains untouched during model selection.
 

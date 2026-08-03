@@ -37,7 +37,7 @@
     "depth": 6,
     "num_degrees": 2,
     "heads": 4,
-    "num_neighbors": 0,
+    "num_neighbors": 1,
     "num_adj_degrees_embed": 2,
     "max_sparse_neighbors": 32,
     "valid_radius": 6.0,

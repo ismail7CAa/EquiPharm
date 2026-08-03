@@ -2,7 +2,7 @@
   "base_config": "pharm_training/configs/spice.json",
   "output_dir": "runs/pharm_training/spice_search",
   "seed": 42,
-  "max_trials": 18,
+  "max_trials": 24,
   "overrides": {
     "epochs": 120,
     "early_stopping_patience": 12,
@@ -17,6 +17,7 @@
   "parameters": {
     "learning_rate": [0.0001, 0.0002, 0.0005],
     "weight_decay": [0.000001, 0.00001],
+    "architecture.num_neighbors": [1, 2, 4],
     "architecture.max_sparse_neighbors": [16, 24, 32]
   }
 }

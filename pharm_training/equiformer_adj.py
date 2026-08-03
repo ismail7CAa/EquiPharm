@@ -20,7 +20,7 @@ class EquiformerAdjConfig:
     num_degrees: int = 2
     heads: int = 4
     dim_head: int | None = None
-    num_neighbors: int = 0
+    num_neighbors: int = 1
     num_adj_degrees_embed: int = 2
     max_sparse_neighbors: int = 32
     valid_radius: float = 6.0

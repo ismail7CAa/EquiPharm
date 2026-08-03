@@ -63,6 +63,13 @@ Training normally stops earlier when validation performance no longer improves.
 NaN/Inf losses fail immediately, and severe validation divergence also stops
 the run.
 
+The baseline configures one geometric fallback neighbor in addition to the capped sparse
+adjacency. The installed `equiformer-pytorch` version can otherwise report zero
+total neighbors when the cap is not smaller than the actual degree of a small
+batch. The fallback prevents that package-level edge case while keeping memory
+bounded. One is only the safe minimum, so the hyperparameter search compares 1,
+2, and 4 extra geometric neighbors.
+
 Rare coordinate-basis singularities may produce non-finite gradients for an
 individual conformation batch. We discard the affected update and allow at most
 five such batches per epoch. If the limit is exceeded, training stops and names
@@ -92,10 +99,11 @@ python -m pharm_training.search \
 ```
 
 Pilot trials use the same deterministic samples of 50,000 training and 10,000
-validation conformations. They compare learning rate, weight decay, and neighbor
-cap (16, 24, or 32), with a maximum of 120 epochs per trial. The resulting
-3 × 2 × 3 grid contains 18 trials. We rank every trial by normalized validation
-energy MAE.
+validation conformations. They compare learning rate, weight decay, extra
+geometric neighbors (1, 2, or 4), and sparse-neighbor cap (16, 24, or 32), with
+a maximum of 120 epochs per trial. The full 3 × 2 × 3 × 3 grid contains 54
+combinations. The pilot deterministically selects 24 of them with seed 42 and
+ranks those trials by normalized validation energy MAE.
 
 The test split is not evaluated during this search. Interrupted trials resume
 from `last.pt`, completed trials are skipped, and failures keep `console.log`.
