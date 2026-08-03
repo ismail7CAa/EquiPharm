@@ -67,7 +67,10 @@ def epoch_pass(model, loader, device, config, optimizer=None):
         "force_mae_ev_per_angstrom": 0.0,
     }
     examples = 0
-    for batch in tqdm(loader, desc="train" if training else "eval", leave=False):
+    skipped_nonfinite = 0
+    for batch_number, batch in enumerate(
+        tqdm(loader, desc="train" if training else "eval", leave=False), start=1
+    ):
         if not hasattr(batch, "atom_type"):
             raise AttributeError("SPICE batch is missing the categorical atom_type field")
         if batch.atom_type.numel():
@@ -109,9 +112,33 @@ def epoch_pass(model, loader, device, config, optimizer=None):
             raise FloatingPointError("Non-finite training loss encountered")
         if training:
             loss.backward()
-            gradient_norm = torch.nn.utils.clip_grad_norm_(
-                model.parameters(), config["gradient_clip"], error_if_nonfinite=True
-            )
+            try:
+                torch.nn.utils.clip_grad_norm_(
+                    model.parameters(), config["gradient_clip"], error_if_nonfinite=True
+                )
+            except RuntimeError as error:
+                if "non-finite" not in str(error):
+                    raise
+                bad_gradients = [
+                    name for name, parameter in model.named_parameters()
+                    if parameter.grad is not None and not torch.isfinite(parameter.grad).all()
+                ]
+                optimizer.zero_grad(set_to_none=True)
+                skipped_nonfinite += 1
+                maximum_skips = config.get("max_nonfinite_batches_per_epoch", 5)
+                preview = ", ".join(bad_gradients[:8])
+                print(
+                    f"warning: skipped batch {batch_number} with non-finite gradients "
+                    f"in {len(bad_gradients)} parameters: {preview}",
+                    flush=True,
+                )
+                if skipped_nonfinite > maximum_skips:
+                    raise FloatingPointError(
+                        f"More than {maximum_skips} batches in this epoch produced "
+                        f"non-finite gradients. Affected parameters include: {preview}. "
+                        "This is systematic numerical instability, not a batch outlier."
+                    )
+                continue
             optimizer.step()
         count = predicted_energy.numel()
         examples += count
@@ -121,7 +148,12 @@ def epoch_pass(model, loader, device, config, optimizer=None):
         totals["energy_mae_ev_per_atom"] += energy_mae.detach().item() * count
         totals["force_mae_ev_per_angstrom"] += force_mae.detach().item() * count
     if not examples:
-        raise RuntimeError("Data loader produced no batches; reduce batch size or inspect the manifest.")
+        raise RuntimeError(
+            "No usable batches were produced; reduce batch size, inspect the manifest, "
+            "or review the non-finite-gradient diagnostics above."
+        )
+    if skipped_nonfinite:
+        print(f"epoch skipped_nonfinite_batches={skipped_nonfinite}", flush=True)
     return {key: value / examples for key, value in totals.items()}
 
 

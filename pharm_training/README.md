@@ -66,8 +66,15 @@ Our baseline uses a 6 Å graph, energy and force Smooth-L1 losses, AdamW, gradie
 clipping, and a validation-driven learning-rate scheduler. The configuration
 allows at most 700 epochs, but this is a safety ceiling rather than a target.
 Training normally stops earlier when validation performance no longer improves.
-NaN/Inf losses or gradients fail immediately, and severe validation divergence
-also stops the run.
+NaN/Inf losses fail immediately, and severe validation divergence also stops
+the run.
+
+Rare coordinate-basis singularities may produce non-finite gradients for an
+individual conformation batch. We discard the affected update and allow at most
+five such batches per epoch. If the limit is exceeded, training stops and names
+the affected parameters. This prevents a numerical problem from contaminating
+the optimizer while also distinguishing an isolated geometry from systematic
+model instability.
 
 ## SPICE hyperparameter search
 

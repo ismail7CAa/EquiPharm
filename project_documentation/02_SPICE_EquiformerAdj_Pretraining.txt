@@ -296,7 +296,9 @@ The run uses the following safeguards:
 - learning-rate reduction when validation performance plateaus;
 - early stopping after 20 epochs without a meaningful validation improvement;
 - a minimum of 25 epochs before divergence-based stopping;
-- immediate failure on NaN or infinite losses/gradients;
+- immediate failure on NaN or infinite losses;
+- discard at most five isolated batches with non-finite parameter gradients per
+  epoch, then stop with affected parameter names if instability is systematic;
 - gradient clipping with a maximum norm of 10;
 - severe-divergence stopping when the validation score becomes more than four
   times worse than the best score;
