@@ -83,7 +83,9 @@ class PotentialDataset(Dataset):
         data = Data(
             pos=pos,
             z=torch.tensor(atomic_numbers, dtype=torch.long),
-            element_index=torch.tensor(
+            # Do not call this field ``element_index``. PyG increments attributes
+            # containing "index" while batching because it assumes graph indices.
+            atom_type=torch.tensor(
                 [self.element_to_index[z] for z in atomic_numbers], dtype=torch.long
             ),
             edge_index=edge_index,
