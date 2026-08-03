@@ -21,8 +21,24 @@ class PotentialDataset(Dataset):
         self, manifest_path: Path, split: str, cutoff: float, limit: int = -1,
         sample_seed: int = 42,
     ):
-        self.manifest = json.loads(Path(manifest_path).read_text())
+        manifest_path = Path(manifest_path)
+        self.manifest = json.loads(manifest_path.read_text())
         self.records = [r for r in self.manifest["records"] if r["split"] == split]
+        for record in self.records:
+            source = Path(record["source"])
+            if source.is_file():
+                continue
+            # Preparation records absolute paths for efficient HDF5 access. If a
+            # repository is moved, recover the file beside the prepared/ folder.
+            relocated = manifest_path.parent.parent / source.name
+            if relocated.is_file():
+                record["source"] = str(relocated.resolve())
+                continue
+            raise FileNotFoundError(
+                f"SPICE source recorded in the manifest does not exist: {source}. "
+                f"Also checked the relocated path: {relocated}. Rerun "
+                "python -m pharm_training.prepare_spice from the current repository."
+            )
         self.cutoff = cutoff
         self.elements = self.manifest["elements"]
         self.element_to_index = {z: index for index, z in enumerate(self.elements)}
