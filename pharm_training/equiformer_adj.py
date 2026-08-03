@@ -22,7 +22,7 @@ class EquiformerAdjConfig:
     dim_head: int | None = None
     num_neighbors: int = 0
     num_adj_degrees_embed: int = 2
-    max_sparse_neighbors: int | None = 32
+    max_sparse_neighbors: int = 32
     valid_radius: float = 6.0
     attend_self: bool = True
     l2_dist_attention: bool = False
@@ -44,6 +44,10 @@ class EquiformerAdjEncoder(nn.Module):
         super().__init__()
         self.config = config or EquiformerAdjConfig()
         cfg = self.config
+        if cfg.max_sparse_neighbors is None or cfg.max_sparse_neighbors <= 0:
+            raise ValueError(
+                "equiformer-pytorch requires max_sparse_neighbors to be a positive integer"
+            )
         if cfg.hidden_dim % cfg.heads:
             raise ValueError("hidden_dim must be divisible by heads when dim_head is omitted")
         dim_head = cfg.dim_head or cfg.hidden_dim // cfg.heads
