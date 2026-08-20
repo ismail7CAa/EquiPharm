@@ -79,8 +79,8 @@ external/*.tar.gz
 external/local/
 external/equiformer_official/
 
-# Temporary molecules
-ada_mol_*.sdf
+# Generated and temporary molecule files
+*.sdf
 
 # Local copied env/repo folders
 equipharm/

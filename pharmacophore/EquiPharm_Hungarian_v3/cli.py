@@ -28,6 +28,9 @@ def parse_args():
     parser.add_argument("--maxiter", type=int)
     parser.add_argument("--popsize", type=int)
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--num-actives", type=int)
+    parser.add_argument("--num-decoys", type=int)
+    parser.add_argument("--seed", type=int, default=1)
     return parser.parse_args()
 
 
@@ -58,6 +61,9 @@ def main() -> None:
         "maxiter": args.maxiter,
         "popsize": args.popsize,
         "limit": args.limit,
+        "num_actives": args.num_actives,
+        "num_decoys": args.num_decoys,
+        "seed": args.seed,
     }
     for key, value in overrides.items():
         if value is not None:
