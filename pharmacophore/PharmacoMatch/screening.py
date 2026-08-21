@@ -357,7 +357,13 @@ def _combine_sdf_directory(sdf_dir: Path, output_sdf: Path, *, force: bool) -> N
         for sdf_file in sdf_files:
             with sdf_file.open("rb") as handle:
                 shutil.copyfileobj(handle, output)
-            output.write(b"\n")
+                # A trailing blank record makes CDPKit treat EOF as a malformed
+                # additional molecule. Add a separator only when the source
+                # does not already finish with a line ending.
+                if handle.tell() > 0:
+                    handle.seek(-1, 2)
+                    if handle.read(1) not in {b"\n", b"\r"}:
+                        output.write(b"\n")
 
 
 def _run_psdcreate(psdcreate: Path | None, input_sdf: Path, output_psd: Path, *, force: bool) -> None:
