@@ -41,24 +41,37 @@ def main():
     if not input_path.exists():
         raise FileNotFoundError(input_path)
 
-    supplier = Chem.SDMolSupplier(str(input_path), sanitize=False, removeHs=False)
+    input_files = (
+        sorted(input_path.glob("*.sdf"))
+        if input_path.is_dir()
+        else [input_path]
+    )
+    if not input_files:
+        raise RuntimeError(f"No .sdf files found in {input_path}")
 
     valid_records = []
     invalid_indices = []
 
-    for original_index, mol in enumerate(supplier):
-        if mol is None:
-            invalid_indices.append(original_index)
-            continue
+    original_index = 0
+    for sdf_file in input_files:
+        supplier = Chem.SDMolSupplier(str(sdf_file), sanitize=False, removeHs=False)
+        for file_record_index, mol in enumerate(supplier):
+            if mol is None:
+                invalid_indices.append(original_index)
+                original_index += 1
+                continue
 
-        valid_records.append(
-            {
-                "original_index_zero_based": original_index,
-                "original_index_one_based": original_index + 1,
-                "name": molecule_name(mol, f"record_{original_index + 1}"),
-                "mol": mol,
-            }
-        )
+            valid_records.append(
+                {
+                    "original_index_zero_based": original_index,
+                    "original_index_one_based": original_index + 1,
+                    "source_file": str(sdf_file),
+                    "source_record_index_zero_based": file_record_index,
+                    "name": molecule_name(mol, f"record_{original_index + 1}"),
+                    "mol": mol,
+                }
+            )
+            original_index += 1
 
     if len(valid_records) < args.count:
         raise RuntimeError(
@@ -100,6 +113,8 @@ def main():
                 "selection_rank_one_based": rank,
                 "original_index_zero_based": item["original_index_zero_based"],
                 "original_index_one_based": item["original_index_one_based"],
+                "source_file": item["source_file"],
+                "source_record_index_zero_based": item["source_record_index_zero_based"],
                 "name": item["name"],
             }
             for rank, item in enumerate(selected, start=1)
