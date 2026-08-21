@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import shutil
+import subprocess
 from pathlib import Path
 
 try:
@@ -363,7 +364,15 @@ def _run_psdcreate(psdcreate: Path | None, input_sdf: Path, output_psd: Path, *,
     if output_psd.exists() and not force:
         return
     if psdcreate is not None:
-        run_command([str(psdcreate), "-i", str(input_sdf), "-o", str(output_psd), "-d"])
+        command = [str(psdcreate), "-i", str(input_sdf), "-o", str(output_psd)]
+        try:
+            run_command([*command, "-d"])
+        except subprocess.CalledProcessError:
+            # Some valid prepared datasets (including DEKOIS 2.0 targets) fail
+            # CDPKit's optional conformer-generation mode. Match the standalone
+            # runners by retrying PSD creation from the supplied conformers.
+            output_psd.unlink(missing_ok=True)
+            run_command(command)
         return
     _create_psd_with_cdpl_python(input_sdf, output_psd)
 
