@@ -307,8 +307,10 @@ def main():
                 save(checkpoints / "best.pt", payload)
                 save(checkpoints / "trained_encoder.pt", {
                     "encoder_state_dict": payload["encoder_state_dict"],
+                    "species_embedding_state_dict": model.species_embedding.state_dict(),
                     "source_checkpoint": str(checkpoints / "best.pt"),
                     "dataset": config["dataset"],
+                    "elements": train_data.elements,
                     "architecture": payload["architecture"],
                     "config": config,
                 })

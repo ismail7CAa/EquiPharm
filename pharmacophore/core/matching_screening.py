@@ -47,9 +47,14 @@ def load_matching_model(
     model_class: str,
 ):
     model_type = import_model_class(model_module, model_class)
-    checkpoint = torch.load(checkpoint_path, map_location=device)
-    model = model_type().to(device)
-    model.load_state_dict(checkpoint["model_state_dict"])
+    if hasattr(model_type, "screening_from_checkpoint"):
+        model = model_type.screening_from_checkpoint(
+            checkpoint_path, map_location=device
+        ).to(device)
+    else:
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+        model = model_type().to(device)
+        model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
     if not hasattr(model, "encode_pharmacophore_features"):
         raise AttributeError("Matching model must expose encode_pharmacophore_features().")
