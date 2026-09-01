@@ -23,7 +23,7 @@ checkpoints/
 checkpoints_*
 checkpoint_02-05-26/
 models_checkpt/checkpoint_02-05-26/
-
+*./sdf
 # =========================
 # LOGS & TRAINING OUTPUT
 # =========================
@@ -81,6 +81,8 @@ external/equiformer_official/
 
 # Generated and temporary molecule files
 *.sdf
-
+*.mol2
+*.psd
+*.pml
 # Local copied env/repo folders
 equipharm/
