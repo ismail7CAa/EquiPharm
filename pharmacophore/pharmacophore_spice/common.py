@@ -13,6 +13,7 @@ from pharmacophore.core.screening import screen_actives_decoys
 SPICE_MODEL = {
     "model_module": "pharm_training.equiformer_encoder_pharmaco_feat",
     "model_class": "SPICEPharmacophoreEncoder",
+    "checkpoint_path": "runs/pharm_training/spice_search/trial_0d798538b1/checkpoints/best.pt",
 }
 
 
