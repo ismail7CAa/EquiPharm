@@ -1,0 +1,12 @@
+{
+  "checkpoint_path": "runs/pharm_training/spice_search/trial_ID/checkpoints/best.pt",
+  "query_ligand": "/path/to/target/crystal_ligand.mol2",
+  "actives_dir": "/path/to/target/actives_sdf",
+  "decoys_dir": "/path/to/target/decoys_sdf",
+  "output_dir": "runs/pharmacophore_spice/EquiPharm_Hungarian_3D",
+  "device": "cuda",
+  "optimize": true,
+  "maxiter": 3,
+  "popsize": 2
+}
+
