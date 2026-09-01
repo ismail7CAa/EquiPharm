@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from pharmacophore.core.matching_screening import screen_actives_decoys_matching
+from pharmacophore.core.seed_aggregation import run_seeded
 from pharmacophore.core.screening import screen_actives_decoys
 
 
@@ -16,11 +17,21 @@ SPICE_MODEL = {
     "checkpoint_path": "runs/pharm_training/spice_search/trial_0d798538b1/checkpoints/best.pt",
 }
 
+SPICE_SAMPLE = {
+    "num_actives": 50,
+    "num_decoys": 500,
+    "seed": 1,
+}
+
+SPICE_SEEDS = (1, 2, 3)
+
 
 def run_pooled(**kwargs):
     # These isolated pipelines must never silently fall back to a QM9 model,
     # even when an old JSON configuration contains model overrides.
     kwargs.update(SPICE_MODEL)
+    for key, value in SPICE_SAMPLE.items():
+        kwargs.setdefault(key, value)
     kwargs.setdefault("pipeline_name", "EquiPharm_SPICE")
     kwargs.setdefault("use_pharmacophore_features", True)
     kwargs.setdefault("rotatable_only", False)
@@ -33,6 +44,8 @@ def run_pooled(**kwargs):
 
 def run_matching(pipeline_name: str, matching_method: str, matching_score_mode: str, **kwargs):
     kwargs.update(SPICE_MODEL)
+    for key, value in SPICE_SAMPLE.items():
+        kwargs.setdefault(key, value)
     kwargs.setdefault("pipeline_name", f"{pipeline_name}_SPICE")
     kwargs.setdefault("matching_method", matching_method)
     kwargs.setdefault("matching_score_mode", matching_score_mode)
@@ -58,6 +71,10 @@ def run_cli(runner, description: str) -> None:
     parser.add_argument("--maxiter", type=int)
     parser.add_argument("--popsize", type=int)
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--num-actives", type=int)
+    parser.add_argument("--num-decoys", type=int)
+    parser.add_argument("--seed", type=int, help="Run one seed instead of the default seeds 1, 2, and 3.")
+    parser.add_argument("--seeds", nargs="+", type=int, help="Seeds to run (default: 1 2 3).")
     args = parser.parse_args()
 
     config = {}
@@ -80,6 +97,8 @@ def run_cli(runner, description: str) -> None:
         "maxiter": args.maxiter,
         "popsize": args.popsize,
         "limit": args.limit,
+        "num_actives": args.num_actives,
+        "num_decoys": args.num_decoys,
     }
     for key, value in overrides.items():
         if value is not None:
@@ -90,4 +109,5 @@ def run_cli(runner, description: str) -> None:
     missing = [key for key in required if key not in config]
     if missing:
         raise SystemExit(f"Missing required settings: {', '.join(missing)}")
-    print(json.dumps(runner(**config), indent=2, sort_keys=True))
+    seeds = args.seeds if args.seeds is not None else ([args.seed] if args.seed is not None else SPICE_SEEDS)
+    print(json.dumps(run_seeded(runner, config, seeds), indent=2, sort_keys=True))
