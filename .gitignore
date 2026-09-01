@@ -86,3 +86,6 @@ external/equiformer_official/
 *.pml
 # Local copied env/repo folders
 equipharm/
+.nfs*
+external/ocp/
+external/smina/
