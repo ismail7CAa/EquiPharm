@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import random
 from pathlib import Path
 
 import torch
@@ -175,6 +176,9 @@ def screen_actives_decoys(
     exclude_rings: bool = True,
     one_per_bond: bool = False,
     limit: int | None = None,
+    num_actives: int | None = None,
+    num_decoys: int | None = None,
+    seed: int = 1,
     write_named_roc_curve: bool = False,
 ) -> dict:
     device_obj = torch.device(device)
@@ -203,6 +207,9 @@ def screen_actives_decoys(
             "exclude_rings": exclude_rings,
             "one_per_bond": one_per_bond,
             "limit": limit,
+            "num_actives": num_actives,
+            "num_decoys": num_decoys,
+            "seed": seed,
         },
     )
 
@@ -225,6 +232,11 @@ def screen_actives_decoys(
 
     active_files = sorted(Path(actives_dir).glob("*.sdf"))
     decoy_files = sorted(Path(decoys_dir).glob("*.sdf"))
+    rng = random.Random(seed)
+    if num_actives is not None:
+        active_files = rng.sample(active_files, min(num_actives, len(active_files)))
+    if num_decoys is not None:
+        decoy_files = rng.sample(decoy_files, min(num_decoys, len(decoy_files)))
     candidates = [(path, 1) for path in active_files] + [(path, 0) for path in decoy_files]
     if limit is not None:
         candidates = candidates[:limit]
