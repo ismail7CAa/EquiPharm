@@ -40,6 +40,7 @@ DECOY_PATTERNS = (
     "inactive_V.smi",
     "decoy.smi",
     "decoys.smi",
+    "random.smi",
     "*decoy*.smi",
     "inactive.sdf",
     "inactives.sdf",

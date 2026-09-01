@@ -6,7 +6,7 @@ import sys
 import shutil
 import subprocess
 from pathlib import Path
-
+import subprocess
 try:
     from ..core.external_baselines import (
         collect_labeled_sdf_files,
