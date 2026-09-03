@@ -1,7 +1,10 @@
 """Dependency-light contract tests for the isolated SPICE screening family."""
 
 import ast
+import importlib
 import json
+import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -36,7 +39,42 @@ def test_shared_runner_forces_the_spice_adapter():
     source = (ROOT / "common.py").read_text()
     assert '"model_module": "pharm_training.equiformer_encoder_pharmaco_feat"' in source
     assert '"model_class": "SPICEPharmacophoreEncoder"' in source
-    assert source.count("kwargs.update(SPICE_MODEL)") == 2
+    assert source.count("for key, value in SPICE_MODEL.items()") == 2
+
+
+def test_cli_defaults_to_results_directory_and_writes_log(tmp_path, monkeypatch):
+    matching_module = types.ModuleType("pharmacophore.core.matching_screening")
+    matching_module.screen_actives_decoys_matching = lambda **kwargs: kwargs
+    screening_module = types.ModuleType("pharmacophore.core.screening")
+    screening_module.screen_actives_decoys = lambda **kwargs: kwargs
+    monkeypatch.setitem(sys.modules, matching_module.__name__, matching_module)
+    monkeypatch.setitem(sys.modules, screening_module.__name__, screening_module)
+    sys.modules.pop("pharmacophore.pharmacophore_spice.common", None)
+    run_cli = importlib.import_module("pharmacophore.pharmacophore_spice.common").run_cli
+
+    target_dir = tmp_path / "data" / "aces"
+    checkpoint = tmp_path / "best.pt"
+    captured = {}
+
+    def runner(**kwargs):
+        captured.update(kwargs)
+        print("screening output")
+        return {"roc_auc": 0.5}
+
+    runner.__module__ = "pharmacophore.pharmacophore_spice.EquiPharm.screening"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["cli", "--checkpoint", str(checkpoint), "--target-dir", str(target_dir), "--device", "cpu", "--seed", "1"],
+    )
+
+    run_cli(runner, "test")
+
+    output = tmp_path / "pharmacophore" / "results" / "pharmacophore_spice" / "EquiPharm" / "aces"
+    assert Path(captured["output_dir"]) == Path("pharmacophore/results/pharmacophore_spice/EquiPharm/aces/seed_1")
+    assert captured["checkpoint_path"] == str(checkpoint)
+    assert "screening output" in (output / "run.log").read_text()
 
 
 def test_seeded_runner_uses_three_samples_and_writes_mean(tmp_path):

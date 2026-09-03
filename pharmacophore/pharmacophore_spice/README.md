@@ -15,11 +15,14 @@ Example:
 python -m pharmacophore.pharmacophore_spice.EquiPharm.cli \
   --checkpoint runs/pharm_training/spice_search/trial_ID/checkpoints/best.pt \
   --target-dir /path/to/dude/target \
-  --output-dir runs/pharmacophore_spice/target \
   --device cuda
 ```
+
+When `--output-dir` is omitted, results are written to
+`pharmacophore/results/pharmacophore_spice/<variant>/<target>/`. Each seeded
+run has its own `seed_<n>` directory, aggregate metrics are stored under
+`seed_mean/`, and combined terminal output is appended to `run.log`.
 
 Replace `EquiPharm` with any included Hungarian directory to run that scoring
 variant. The adapter expects the standard 11-channel atom descriptors produced
 by `pharmacophore.core.molecule_io`.
-
