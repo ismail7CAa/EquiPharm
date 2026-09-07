@@ -151,10 +151,10 @@ runs/pharm_training/<dataset>/
     trained_encoder.pt
 ```
 
-`trained_encoder.pt` contains only the transferable Equiformer geometric core.
-The atomic-species input layer and potential head are deliberately excluded.
-SPICE atomic identities and pharmacophore-screening descriptors are different
-modalities, so copying those layers would be invalid.
+`trained_encoder.pt` contains the transferable Equiformer geometric core and
+the SPICE atomic-species embedding. The potential prediction head is excluded.
+Descriptor-based pharmacophore screening does not directly reuse the species
+embedding, but atomic-number-based QM9 fine-tuning does.
 
 The dedicated downstream adapter is
 `pharm_training/equiformer_encoder_pharmaco_feat.py`. It reconstructs the exact
@@ -178,6 +178,29 @@ metadata used by the Hungarian matcher.
 We must still fine-tune or calibrate the transferred encoder for the
 pharmacophore objective. The pretraining checkpoint alone is not a calibrated
 pharmacophore matcher or a ready-to-use screening checkpoint.
+
+## Fine-tune the SPICE encoder on nine QM9 targets
+
+The dedicated fine-tuning entry point predicts only the six electronic targets
+(dipole moment, polarizability, HOMO, LUMO, HOMO-LUMO gap, and electronic
+spatial extent) and three geometry targets (rotational constants A, B, and C).
+It restores both the exact SPICE geometric architecture and its learned species
+embedding. The default learning rate is deliberately limited to `1e-6`, with a
+cosine decay to `1e-7`, to reduce catastrophic forgetting.
+
+```bash
+python -m pharm_training.finetune_spice_qm9 \
+  --checkpoint runs/pharm_training/spice/checkpoints/best.pt \
+  --data-dir data/QM9 \
+  --output-dir runs/pharm_training/spice_qm9_finetune \
+  --device cuda
+```
+
+Use `checkpoints/trained_encoder.pt` instead if preferred. Both supported
+checkpoint forms contain the species embedding. Fine-tuning produces the normal
+QM9 run configuration, TensorBoard logs, per-property MAEs, resumable last/best
+checkpoints, and `transfer_provenance.json`. Learning rates above `1e-5` are
+rejected by the CLI as an accidental-forgetting safeguard.
 
 The full scientific and technical record is in
 [`project_documentation/02_SPICE_EquiformerAdj_Pretraining.txt`](../project_documentation/02_SPICE_EquiformerAdj_Pretraining.txt).
