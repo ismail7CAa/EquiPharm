@@ -16,10 +16,11 @@ The source SPICE checkpoint is read from `transfer_provenance.json`. Pass
 `--source-spice-checkpoint /path/to/spice/checkpoints/best.pt` only if that
 record or its referenced file is unavailable.
 
-Then screen one target with three seeds:
+Then screen one target with three seeds using Hungarian v2 (Euclidean
+assignment followed by embedding-geometry distance scoring):
 
 ```bash
-python -m pharmacophore.pharmacophore_spice_qm9.EquiPharm_Hungarian_v5_soft.cli \
+python -m pharmacophore.pharmacophore_spice_qm9.EquiPharm_Hungarian_v2.cli \
   --checkpoint /runs/pharm_training/spice_qm9_finetune_300/checkpoints/trained_encoder.pt \
   --target-dir /path/to/dude/target \
   --device cuda

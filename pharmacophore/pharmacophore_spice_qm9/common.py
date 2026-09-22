@@ -13,15 +13,9 @@ MODEL = {
 def run_matching(**kwargs):
     for key, value in MODEL.items():
         kwargs.setdefault(key, value)
-    kwargs.setdefault("pipeline_name", "EquiPharm_Hungarian_v5_soft_SPICE_QM9")
-    kwargs.setdefault("matching_method", "hungarian_cosine_quality")
-    kwargs.setdefault("matching_score_mode", "hybrid_local_geometry")
-    kwargs.setdefault("embedding_weight", 0.4)
-    kwargs.setdefault("spatial_weight", 0.6)
-    kwargs.setdefault("spatial_tau", 2.0)
-    kwargs.setdefault("geometry_penalty_weight", 0.3)
-    kwargs.setdefault("require_full_query_coverage", False)
-    kwargs.setdefault("enforce_feature_family", True)
+    kwargs.setdefault("pipeline_name", "EquiPharm_Hungarian_v2_SPICE_QM9")
+    kwargs.setdefault("matching_method", "hungarian_euclidean")
+    kwargs.setdefault("matching_score_mode", "embedding_geometry_distance")
     kwargs.setdefault("rotatable_only", False)
     kwargs.setdefault("heavy_only", True)
     kwargs.setdefault("exclude_rings", True)
