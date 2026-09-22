@@ -46,7 +46,7 @@ class Tee:
             stream.flush()
 
 
-def default_output_dir(runner, config: dict) -> Path:
+def default_output_dir(runner, config: dict, result_family: str = "pharmacophore_spice") -> Path:
     """Return the standard SPICE result directory for a CLI invocation."""
     variant = runner.__module__.split(".")[-2]
     target_name = config.get("target_name")
@@ -58,7 +58,7 @@ def default_output_dir(runner, config: dict) -> Path:
                 target_name = path.parent.name if key == "query_ligand" else path.parent.name
                 break
     target_name = target_name or "unknown_target"
-    return Path("pharmacophore/results/pharmacophore_spice") / variant / target_name
+    return Path("pharmacophore/results") / result_family / variant / target_name
 
 
 def run_pooled(**kwargs):
@@ -93,7 +93,7 @@ def run_matching(pipeline_name: str, matching_method: str, matching_score_mode: 
     return screen_actives_decoys_matching(**kwargs)
 
 
-def run_cli(runner, description: str) -> None:
+def run_cli(runner, description: str, result_family: str = "pharmacophore_spice") -> None:
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument("--config", type=Path)
     parser.add_argument("--target-dir", type=Path)
@@ -143,7 +143,7 @@ def run_cli(runner, description: str) -> None:
     if args.no_optimize:
         config["optimize"] = False
     if "output_dir" not in config:
-        config["output_dir"] = str(default_output_dir(runner, config))
+        config["output_dir"] = str(default_output_dir(runner, config, result_family))
     required = ("checkpoint_path", "query_ligand", "actives_dir", "decoys_dir", "output_dir")
     missing = [key for key in required if key not in config]
     if missing:
